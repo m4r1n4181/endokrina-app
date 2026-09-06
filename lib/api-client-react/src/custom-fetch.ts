@@ -337,10 +337,28 @@ export async function customFetch<T = unknown>(
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
 
+  let body = init.body;
+
+  const isPlainJsonBody =
+    body != null &&
+    typeof body === "object" &&
+    !(body instanceof FormData) &&
+    !(body instanceof Blob) &&
+    !(body instanceof URLSearchParams) &&
+    !(body instanceof ArrayBuffer) &&
+    !ArrayBuffer.isView(body);
+
+  if (isPlainJsonBody) {
+    body = JSON.stringify(body);
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+  }
+
   if (
-    typeof init.body === "string" &&
+    typeof body === "string" &&
     !headers.has("content-type") &&
-    looksLikeJson(init.body)
+    looksLikeJson(body)
   ) {
     headers.set("content-type", "application/json");
   }
@@ -349,8 +367,6 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
-  // Attach bearer token when an auth getter is configured and no
-  // Authorization header has been explicitly provided.
   if (_authTokenGetter && !headers.has("authorization")) {
     const token = await _authTokenGetter();
     if (token) {
@@ -360,7 +376,9 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  console.log("[customFetch HIT]", method, resolveUrl(input), body);
+  
+  const response = await fetch(input, { ...init, body, method, headers });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

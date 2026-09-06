@@ -77,8 +77,10 @@ const configSchema = z.object({
   // CORS
   CORS_ORIGINS: z.string().default("*"),
 
-  // App URL (for magic link construction)
+  // API / app URL (used for API references)
   APP_BASE_URL: z.string().default("http://localhost:5000"),
+  // Patient/staff portal URL — magic links must open the frontend, not the API
+  PORTAL_BASE_URL: z.string().default("http://localhost:5173"),
 });
 
 function loadConfig() {

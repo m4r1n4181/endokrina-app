@@ -199,7 +199,8 @@ async function seed() {
     console.log(`  ✓  Preparation link created`);
   }
 
-  const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:5000";
+  const baseUrl = process.env.PORTAL_BASE_URL ?? process.env.APP_BASE_URL ?? "http://localhost:5173";
+  const apiUrl = process.env.APP_BASE_URL ?? "http://localhost:5000";
 
   console.log(`
 ────────────────────────────────────────────────────────────
@@ -207,23 +208,23 @@ async function seed() {
 ────────────────────────────────────────────────────────────
 
  ADMIN LOGIN  (clinic_admin role — creates appointments)
-   URL:       ${baseUrl}/api/auth/login
+   Portal:    ${baseUrl}/login
    Email:     admin@clinic.test
    Password:  Admin1234!admin
 
  DOCTOR LOGIN  (read-only clinical views)
-   URL:       ${baseUrl}/api/auth/login
+   Portal:    ${baseUrl}/login
    Email:     dr.jovic@clinic.test
    Password:  Doctor1234!doc
 
- PATIENT FLOW  (magic link → DOB → SMS OTP)
+ PATIENT FLOW  (magic link → DOB → SMS OTP → consent → questionnaire)
    Magic link: ${baseUrl}/prepare/${token}
    DOB:        1985-03-15  (format: YYYY-MM-DD)
-   OTP:        printed in the SERVER CONSOLE when you submit the DOB
+   OTP:        printed in the API SERVER CONSOLE when you submit the DOB
                (SMS_PROVIDER=stub — OTP is never actually sent by SMS)
 
  HEALTHCHECK
-   ${baseUrl}/api/healthz  →  {"status":"ok"}
+   ${apiUrl}/api/healthz  →  {"status":"ok"}
 ────────────────────────────────────────────────────────────
 `);
 

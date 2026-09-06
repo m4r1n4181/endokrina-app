@@ -14,7 +14,7 @@
  */
 import { Router } from "express";
 import {
-  db, questionnairesTable, appointmentsTable, summariesTable, AUDIT_ACTIONS,
+  db, questionnairesTable, appointmentsTable, AUDIT_ACTIONS,
 } from "../lib/db";
 import { eq } from "drizzle-orm";
 import { requirePatientAuth, requireStaffAuth } from "../middlewares/authenticate";
@@ -22,9 +22,24 @@ import { clinicalContentGuard } from "../middlewares/rbac";
 import { writeAuditLog, linkAuditCtx, userAuditCtx } from "../services/audit";
 import { generateSummaries } from "../services/summary";
 import { extractClientIp } from "../middlewares/audit-middleware";
+import { getQuestionnaireSchema, THYROID_QUESTIONNAIRE_V1 } from "../lib/questionnaire-schema";
 import { z } from "zod";
 
 const router = Router();
+
+// GET /api/questionnaires/schema — config-driven schema for patient UI (NFR-012)
+router.get("/schema", (_req, res) => {
+  res.json(THYROID_QUESTIONNAIRE_V1);
+});
+
+router.get("/schema/:version", (req, res) => {
+  const schema = getQuestionnaireSchema(req.params.version as string);
+  if (!schema) {
+    res.status(404).json({ error: "Schema version not found" });
+    return;
+  }
+  res.json(schema);
+});
 
 // Patient: record consent before questionnaire opens (required per compliance)
 router.post("/:appointmentId/consent", requirePatientAuth, async (req, res, next) => {
@@ -39,15 +54,41 @@ router.post("/:appointmentId/consent", requirePatientAuth, async (req, res, next
     }
 
     const { consentVersion } = req.body as { consentVersion?: string };
+    const now = new Date();
 
+    // Upsert — questionnaire row may not exist yet at first consent
     await db
-      .update(questionnairesTable)
-      .set({
-        consentGivenAt: new Date(),
+      .insert(questionnairesTable)
+      .values({
+        appointmentId,
+        answers: {},
+        status: "in_progress",
+        consentGivenAt: now,
         consentVersion: consentVersion ?? "v1",
-        updatedAt: new Date(),
+        schemaVersion: THYROID_QUESTIONNAIRE_V1.version,
       })
-      .where(eq(questionnairesTable.appointmentId, appointmentId));
+      .onConflictDoUpdate({
+        target: questionnairesTable.appointmentId,
+        set: {
+          consentGivenAt: now,
+          consentVersion: consentVersion ?? "v1",
+          updatedAt: now,
+        },
+      });
+
+    // Mark appointment opened after consent (don't downgrade later statuses)
+    const [current] = await db
+      .select({ status: appointmentsTable.status })
+      .from(appointmentsTable)
+      .where(eq(appointmentsTable.id, appointmentId))
+      .limit(1);
+
+    if (current && ["draft_invitation", "link_sent"].includes(current.status)) {
+      await db
+        .update(appointmentsTable)
+        .set({ status: "opened", updatedAt: now })
+        .where(eq(appointmentsTable.id, appointmentId));
+    }
 
     await writeAuditLog({
       ctx: linkAuditCtx(linkId, ip),

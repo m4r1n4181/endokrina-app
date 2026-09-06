@@ -153,6 +153,7 @@ SMS_PROVIDER=stub
 STORAGE_PROVIDER=stub
 EMAIL_PROVIDER=stub
 APP_BASE_URL=http://localhost:5000
+PORTAL_BASE_URL=http://localhost:5173
 ```
 
 ### Generating the two required secrets
@@ -246,87 +247,63 @@ Safe to run again — the script skips records that already exist.
 
 ---
 
-## 9. Start the server
+## 9. Start the API server
 
 ```bash
 pnpm --filter @workspace/api-server run dev
 ```
 
-The server **builds first, then starts**. Wait for:
+Wait for:
 ```
 INFO: Server listening
     port: 5000
 ```
 
-Leave this terminal open. The server must keep running.
+Leave this terminal open.
 
-> To stop: press **Ctrl+C** in the terminal.
+---
+
+## 9b. Start the clinic portal (UI)
+
+Open a **second** Git Bash terminal and run:
+
+```bash
+pnpm --filter @workspace/clinic-portal run dev
+```
+
+The UI runs at **http://localhost:5173** and proxies `/api` to the API on port 5000.
+
+Magic links from seed / admin console point to the portal (`PORTAL_BASE_URL`), not the API.
 
 ---
 
 ## 10. Verify the app is working
 
-Open a **second Git Bash terminal** (click the `+` in VS Code's terminal panel) and run the tests below.
-
 ### 10a. Health check
 ```bash
 curl http://localhost:5000/api/healthz
 ```
-✅ Expected:
-```json
-{"status":"ok"}
-```
+✅ Expected: `{"status":"ok"}`
 
-### 10b. Admin login
+### 10b. Staff login (browser)
+1. Open http://localhost:5173/login
+2. Admin: `admin@clinic.test` / `Admin1234!admin`
+3. Doctor: `dr.jovic@clinic.test` / `Doctor1234!doc`
+
+### 10c. Patient flow (browser)
+1. Copy the magic link printed by the seed script (or create a new invitation as admin)
+2. Open it in the browser (DOB: `1985-03-15` for the seed patient)
+3. Read the 6-digit OTP from the **API server terminal** (SMS stub)
+4. Complete consent → questionnaire → lab status/documents → done
+
+### 10d. API smoke (optional)
 ```bash
 curl -s -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@clinic.test","password":"Admin1234!admin"}' | cat
-```
-✅ Expected: JSON with `accessToken` field:
-```json
-{"accessToken":"eyJ...","refreshToken":"eyJ...","requiresMfa":false}
+  -d '{"email":"admin@clinic.test","password":"Admin1234!admin"}'
 ```
 
-Save the `accessToken` value — you'll use it to make authenticated requests.
-
-### 10c. List appointments (admin)
-Replace `YOUR_TOKEN` with the access token from the login step:
-```bash
-curl -s http://localhost:5000/api/appointments \
-  -H "Authorization: Bearer YOUR_TOKEN" | cat
-```
-✅ Expected: JSON array containing the seeded appointment.
-
-### 10d. Patient flow (verify DOB + get OTP)
-
-The seed script printed a magic link like:  
-`http://localhost:5000/prepare/Qss7zA...`
-
-The token is the last part after `/prepare/`.
-
-**Step 1 — submit DOB:**
-```bash
-curl -s -X POST http://localhost:5000/api/patient-auth/verify-dob \
-  -H "Content-Type: application/json" \
-  -d '{"token":"<paste token here>","dateOfBirth":"1985-03-15"}' | cat
-```
-✅ Expected: `{"success":true,"sessionId":"..."}`  
-In the **server terminal** (the one running `dev`) you will see a line like:
-```
-WARN [STUB SMS] OTP code — remove before production
-    phone: "+381641234567"
-    otp: "123456"
-```
-**Copy that 6-digit OTP.**
-
-**Step 2 — submit OTP:**
-```bash
-curl -s -X POST http://localhost:5000/api/patient-auth/verify-otp \
-  -H "Content-Type: application/json" \
-  -d '{"sessionId":"<paste sessionId>","otpCode":"<paste otp>"}' | cat
-```
-✅ Expected: JSON with `patientToken` field — the patient is now authenticated.
+Patient DOB verification returns `{"otpSent":true,"phone":"..."}` (not a sessionId). OTP verify uses `{token, otp}`.
 
 ---
 
@@ -335,38 +312,40 @@ curl -s -X POST http://localhost:5000/api/patient-auth/verify-otp \
 | Task | Command |
 |---|---|
 | Install dependencies | `pnpm install` |
-| Push schema changes | `pnpm --filter @workspace/db run push` |
+| Push schema | `pnpm --filter @workspace/db run push` |
 | Seed test data | `pnpm --filter @workspace/db run seed` |
-| Start the server | `pnpm --filter @workspace/api-server run dev` |
-| Type-check everything | `pnpm run typecheck` |
-| Health check URL | http://localhost:5000/api/healthz |
+| Start API | `pnpm --filter @workspace/api-server run dev` |
+| Start UI | `pnpm --filter @workspace/clinic-portal run dev` |
+| Type-check | `pnpm run typecheck` |
+| Health | http://localhost:5000/api/healthz |
+| Portal | http://localhost:5173 |
+
+In `.env` set:
+- `APP_BASE_URL=http://localhost:5000`
+- `PORTAL_BASE_URL=http://localhost:5173`
+- `SMS_PROVIDER=stub`
 
 ---
 
 ## Troubleshooting
 
 **`sh: command not found` or preinstall fails**  
-→ You are using PowerShell or cmd, not Git Bash. Switch terminals in VS Code (dropdown next to `+`).
+→ Use Git Bash, not PowerShell/cmd.
 
 **`argon2` build errors / node-gyp fails**  
-→ The native build tools are missing. Run in **Administrator PowerShell**:
-```powershell
-npm install -g node-gyp windows-build-tools
-```
-Then `pnpm install` again.
+→ Install Build Tools (Step 1b), then retry `pnpm install`.
 
 **`Cannot connect to database` / `ECONNREFUSED`**  
-→ PostgreSQL is not running. Open **Start → Services**, find **postgresql-x64-16**, right-click → **Start**.  
-→ Or check your `DATABASE_URL` in `.env` — wrong password or database name.
+→ Start PostgreSQL service; check `DATABASE_URL` password/db name.
 
 **`Configuration error: JWT_SECRET: Required`**  
-→ The server cannot read your `.env` file. Check that `.env` exists in the project root (not `.env.example`) and that `JWT_SECRET` and `MAGIC_LINK_SECRET` are filled in (not left as `REPLACE_ME`).
+→ Ensure `.env` exists in the project root with secrets filled in.
 
-**`Port 5000 already in use`**  
-→ Something else is using port 5000. Change `PORT=5001` in `.env` (and update `APP_BASE_URL` to match). Restart the server.
+**Portal loads but API calls fail**  
+→ API must be running on 5000; Vite proxies `/api` automatically.
 
-**OTP not appearing in server terminal**  
-→ Make sure `SMS_PROVIDER=stub` is in `.env`. If you see nothing, the DOB step may have returned an error — check the curl response for an error message.
+**OTP not in server terminal**  
+→ Confirm `SMS_PROVIDER=stub`. Check DOB response for errors first.
 
 **`pnpm` is not recognized**  
-→ Open a new terminal after installing pnpm. If still not found, add `%APPDATA%\npm` to your Windows PATH (System Properties → Environment Variables → Path → Edit → New).
+→ Reopen terminal; ensure `%APPDATA%\npm` is on PATH.

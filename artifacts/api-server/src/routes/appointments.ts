@@ -6,7 +6,7 @@
  *   - View operational status → all staff
  *   - View clinical content → doctor only (enforced in patient-detail routes)
  */
-import { Router } from "express";
+import express, { Router } from "express";
 import { db, appointmentsTable, preparationLinksTable, patientsTable, AUDIT_ACTIONS } from "../lib/db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { requireStaffAuth } from "../middlewares/authenticate";
@@ -19,6 +19,10 @@ import { z } from "zod";
 
 const router = Router();
 
+// Parse JSON here as well so this route remains resilient even if the
+// application-level middleware order changes in a bundled deployment.
+router.use(express.json());
+
 // All appointment routes require staff auth
 router.use(requireStaffAuth);
 
@@ -28,11 +32,12 @@ const createAppointmentSchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   doctorId: z.string().uuid(),
   appointmentType: z.string().min(1),
-  scheduledAt: z.string().datetime({ offset: true }),
+  scheduledAt: z.string().min(1),
 });
 
 // POST /api/appointments — create invitation (admin/nurse only)
 router.post("/", adminOnly, async (req, res, next) => {
+  console.log("CT:", req.headers["content-type"], "BODY:", req.body);
   try {
     const parse = createAppointmentSchema.safeParse(req.body);
     if (!parse.success) {
@@ -146,7 +151,7 @@ router.post("/", adminOnly, async (req, res, next) => {
       .where(eq(appointmentsTable.id, appointment.id));
 
     // TODO: dispatch message via configured channel (Viber/SMS/email)
-    const linkUrl = `${config.APP_BASE_URL}/pripreme/${token}`;
+    const linkUrl = `${config.PORTAL_BASE_URL}/prepare/${token}`;
 
     res.status(201).json({
       appointment: { ...appointment, status: "link_sent" },
@@ -176,6 +181,8 @@ router.get("/", staffOnly, async (req, res, next) => {
         excludedFromClinicalViews: appointmentsTable.excludedFromClinicalViews,
         patientId: appointmentsTable.patientId,
         doctorId: appointmentsTable.doctorId,
+        createdAt: appointmentsTable.createdAt,
+        updatedAt: appointmentsTable.updatedAt,
       })
       .from(appointmentsTable)
       .where(
@@ -196,14 +203,15 @@ router.get("/", staffOnly, async (req, res, next) => {
       );
     }
 
-    res.json({ appointments: rows });
+    // OpenAPI: array of Appointment
+    res.json(rows);
   } catch (err) {
     next(err);
   }
 });
 
 // GET /api/appointments/:id — operational status view (all staff)
-// Doctors get the full record; admin/reception get operational fields only
+// Doctors get clinical content; admin/reception get operational fields only
 router.get("/:id", staffOnly, async (req, res, next) => {
   try {
     const { id } = req.params as Record<string, string>;
@@ -222,21 +230,75 @@ router.get("/:id", staffOnly, async (req, res, next) => {
       return;
     }
 
-    // Admin/reception: operational fields only — no clinical content
+    // Resolve attending doctor name (operational — safe for admin)
+    const { usersTable, questionnairesTable } = await import("../lib/db");
+    const [doctor] = appointment.doctorId
+      ? await db
+          .select({
+            id: usersTable.id,
+            fullName: usersTable.fullName,
+            email: usersTable.email,
+            role: usersTable.role,
+          })
+          .from(usersTable)
+          .where(eq(usersTable.id, appointment.doctorId))
+          .limit(1)
+      : [undefined];
+
+    // Admin/reception: operational fields only — no clinical content (answers/docs/summaries)
     if (role === "clinic_admin" || role === "nurse") {
+      const [qMeta] = await db
+        .select({
+          id: questionnairesTable.id,
+          status: questionnairesTable.status,
+          consentGivenAt: questionnairesTable.consentGivenAt,
+          savedAt: questionnairesTable.savedAt,
+          submittedAt: questionnairesTable.submittedAt,
+        })
+        .from(questionnairesTable)
+        .where(eq(questionnairesTable.appointmentId, id))
+        .limit(1);
+
       res.json({
         id: appointment.id,
+        patientId: appointment.patientId,
+        doctorId: appointment.doctorId,
         invitedFullName: appointment.invitedFullName,
+        invitedPhone: appointment.invitedPhone,
         appointmentType: appointment.appointmentType,
         scheduledAt: appointment.scheduledAt,
         status: appointment.status,
         labStatus: appointment.labStatus,
-        // Note: no questionnaire content, no documents, no summaries
+        excludedFromClinicalViews: appointment.excludedFromClinicalViews,
+        createdAt: appointment.createdAt,
+        updatedAt: appointment.updatedAt,
+        doctor: doctor
+          ? { id: doctor.id, fullName: doctor.fullName, email: doctor.email, role: doctor.role }
+          : undefined,
+        // Status timestamps only — never answers
+        questionnaire: qMeta
+          ? {
+              id: qMeta.id,
+              appointmentId: id,
+              status: qMeta.status,
+              consentGivenAt: qMeta.consentGivenAt,
+              savedAt: qMeta.savedAt,
+              submittedAt: qMeta.submittedAt,
+              schemaVersion: "thyroid_v1",
+              createdAt: appointment.createdAt,
+            }
+          : null,
       });
       return;
     }
 
-    // Doctor: full appointment record (clinical access audited separately on sub-resources)
+    // Doctor: full appointment + questionnaire answers (audited)
+    const [questionnaire] = await db
+      .select()
+      .from(questionnairesTable)
+      .where(eq(questionnairesTable.appointmentId, id))
+      .limit(1);
+
     await writeAuditLog({
       ctx: userAuditCtx(userId, role, ip),
       action: "appointment.view",
@@ -245,7 +307,24 @@ router.get("/:id", staffOnly, async (req, res, next) => {
       outcome: "success",
     });
 
-    res.json(appointment);
+    if (questionnaire) {
+      await writeAuditLog({
+        ctx: userAuditCtx(userId, role, ip),
+        action: AUDIT_ACTIONS.QUESTIONNAIRE_VIEW,
+        targetType: "questionnaire",
+        targetId: questionnaire.id,
+        outcome: "success",
+        context: { appointmentId: id },
+      });
+    }
+
+    res.json({
+      ...appointment,
+      doctor: doctor
+        ? { id: doctor.id, fullName: doctor.fullName, email: doctor.email, role: doctor.role }
+        : undefined,
+      questionnaire: questionnaire ?? null,
+    });
   } catch (err) {
     next(err);
   }
@@ -390,7 +469,7 @@ router.post("/:id/resend-link", adminOnly, async (req, res, next) => {
     }
 
     // TODO: dispatch message via configured channel
-    const linkUrl = `${config.APP_BASE_URL}/pripreme/${link.token}`;
+    const linkUrl = `${config.PORTAL_BASE_URL}/prepare/${link.token}`;
 
     await writeAuditLog({
       ctx: userAuditCtx(userId, req.user!.role, ip),

@@ -80,7 +80,7 @@ router.post("/login", async (req, res, next) => {
       .set({ lastLoginAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
-    const token = signStaffToken(user);
+    const accessToken = signStaffToken(user);
     const refreshToken = signRefreshToken(user.id);
 
     await writeAuditLog({
@@ -92,14 +92,19 @@ router.post("/login", async (req, res, next) => {
     });
 
     res.json({
-      token,
+      accessToken,
       refreshToken,
+      requiresMfa: false,
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
         fullName: user.fullName,
+        phone: user.phone ?? null,
         mfaEnabled: user.mfaEnabled,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt ?? null,
       },
     });
   } catch (err) {
@@ -127,7 +132,7 @@ router.post("/refresh", async (req, res, next) => {
       return;
     }
 
-    res.json({ token: signStaffToken(user) });
+    res.json({ accessToken: signStaffToken(user) });
   } catch (err) {
     next(err);
   }

@@ -1,15 +1,14 @@
 /**
  * Admin/staff management routes.
  * Create and manage staff user accounts (doctors, admins, nurses).
- * Requires doctor or clinic_admin role with elevated context.
  *
  * NOTE: Role changes are audit logged (required by compliance).
  */
 import { Router } from "express";
 import { db, usersTable, AUDIT_ACTIONS } from "../lib/db";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { requireStaffAuth } from "../middlewares/authenticate";
-import { doctorOnly } from "../middlewares/rbac";
+import { staffOnly, requireRole } from "../middlewares/rbac";
 import { writeAuditLog, userAuditCtx } from "../services/audit";
 import { extractClientIp } from "../middlewares/audit-middleware";
 import argon2 from "argon2";
@@ -27,8 +26,8 @@ const createUserSchema = z.object({
   phone: z.string().optional(),
 });
 
-// POST /api/admin/users — create staff user (doctor-only for MVP)
-router.post("/users", doctorOnly, async (req, res, next) => {
+// POST /api/admin/users — create staff user (doctor or clinic_admin)
+router.post("/users", requireRole("doctor", "clinic_admin"), async (req, res, next) => {
   try {
     const parse = createUserSchema.safeParse(req.body);
     if (!parse.success) {
@@ -55,6 +54,7 @@ router.post("/users", doctorOnly, async (req, res, next) => {
         role: usersTable.role,
         fullName: usersTable.fullName,
         mfaEnabled: usersTable.mfaEnabled,
+        isActive: usersTable.isActive,
         createdAt: usersTable.createdAt,
       });
 
@@ -73,8 +73,8 @@ router.post("/users", doctorOnly, async (req, res, next) => {
   }
 });
 
-// GET /api/admin/users — list staff users
-router.get("/users", doctorOnly, async (req, res, next) => {
+// GET /api/admin/users — list staff users (all staff — admin needs doctor list for invitations)
+router.get("/users", staffOnly, async (req, res, next) => {
   try {
     const users = await db
       .select({
@@ -88,14 +88,15 @@ router.get("/users", doctorOnly, async (req, res, next) => {
         lastLoginAt: usersTable.lastLoginAt,
       })
       .from(usersTable);
-    res.json({ users });
+    // OpenAPI: array of StaffUser
+    res.json(users);
   } catch (err) {
     next(err);
   }
 });
 
-// GET /api/admin/audit-log — query audit log (doctor-only; for breach investigations)
-router.get("/audit-log", doctorOnly, async (req, res, next) => {
+// GET /api/admin/audit-log — query audit log (doctor + clinic_admin for breach scoping)
+router.get("/audit-log", requireRole("doctor", "clinic_admin"), async (req, res, next) => {
   try {
     const { limit = "100", offset = "0" } = req.query as { limit?: string; offset?: string };
     const { auditLogTable } = await import("../lib/db");
@@ -103,10 +104,31 @@ router.get("/audit-log", doctorOnly, async (req, res, next) => {
     const entries = await db
       .select()
       .from(auditLogTable)
+      .orderBy(desc(auditLogTable.timestamp))
       .limit(Math.min(parseInt(limit), 500))
       .offset(parseInt(offset));
 
-    res.json({ entries, count: entries.length });
+    // Shape for OpenAPI/client: flat array with UI-friendly aliases
+    const mapped = entries.map((e) => ({
+      id: e.id,
+      actorType: e.actorType,
+      actorId: e.actorUserId ?? e.actorLinkId,
+      actorUserId: e.actorUserId,
+      actorLinkId: e.actorLinkId,
+      actorRole: e.actorRole,
+      actorEmail: null as string | null,
+      action: e.action,
+      targetType: e.targetType,
+      targetId: e.targetId,
+      appointmentId: e.targetType === "appointment" ? e.targetId : (e.context as { appointmentId?: string } | null)?.appointmentId ?? null,
+      patientId: e.targetType === "patient" ? e.targetId : null,
+      outcome: e.outcome === "failed" ? "failure" : e.outcome,
+      context: e.context,
+      createdAt: e.timestamp,
+      timestamp: e.timestamp,
+    }));
+
+    res.json(mapped);
   } catch (err) {
     next(err);
   }

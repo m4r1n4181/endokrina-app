@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Clinic Portal"
+version = "1.0.0"
+id = "artifacts/clinic-portal"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23344
+
+[services.development]
+run = "pnpm --filter @workspace/clinic-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/clinic-portal", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/clinic-portal/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23344"
+BASE_PATH = "/"

@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: DEV-001 Thyroid Pre-Visit Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Staff authentication
+  - name: patient-auth
+    description: Patient magic-link authentication
+  - name: appointments
+    description: Appointment management
+  - name: questionnaires
+    description: Patient questionnaire flow
+  - name: uploads
+    description: Document uploads
+  - name: doctor
+    description: Doctor clinical views
+  - name: admin
+    description: Admin staff management
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +38,1199 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Staff Auth ────────────────────────────────────────────────────────────
+  /auth/login:
+    post:
+      operationId: loginStaff
+      tags: [auth]
+      summary: Staff login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthCredentials"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRefreshInput"
+      responses:
+        "200":
+          description: New access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenRefreshResult"
+
+  /auth/logout:
+    post:
+      operationId: logoutStaff
+      tags: [auth]
+      summary: Staff logout
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current staff user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffUser"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Patient Auth ──────────────────────────────────────────────────────────
+  /patient-auth/verify-dob:
+    post:
+      operationId: verifyDob
+      tags: [patient-auth]
+      summary: Step 1 — verify date of birth against magic link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DobVerification"
+      responses:
+        "200":
+          description: DOB matched — OTP sent to patient phone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DobVerificationResult"
+        "400":
+          description: Wrong DOB / rate-limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /patient-auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [patient-auth]
+      summary: Step 2 — verify OTP and issue patient session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtpVerification"
+      responses:
+        "200":
+          description: OTP matched — patient session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientSession"
+        "400":
+          description: Wrong OTP / rate-limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Appointments ──────────────────────────────────────────────────────────
+  /appointments:
+    post:
+      operationId: createAppointment
+      tags: [appointments]
+      summary: Create appointment invitation (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppointmentInput"
+      responses:
+        "201":
+          description: Appointment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentCreated"
+        "409":
+          description: Possible duplicate patient detected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentCreated"
+
+    get:
+      operationId: listAppointments
+      tags: [appointments]
+      summary: List appointments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Filter by date (YYYY-MM-DD)
+        - name: doctorId
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Filter by doctor ID
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Filter by status
+      responses:
+        "200":
+          description: List of appointments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Appointment"
+
+  /appointments/{id}:
+    get:
+      operationId: getAppointment
+      tags: [appointments]
+      summary: Get appointment detail
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Appointment detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    patch:
+      operationId: updateAppointment
+      tags: [appointments]
+      summary: Edit appointment (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppointmentUpdate"
+      responses:
+        "200":
+          description: Updated appointment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Appointment"
+
+  /appointments/{id}/cancel:
+    post:
+      operationId: cancelAppointment
+      tags: [appointments]
+      summary: Cancel appointment (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /appointments/{id}/resend-link:
+    post:
+      operationId: resendLink
+      tags: [appointments]
+      summary: Resend magic link to patient (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Link resent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendLinkResult"
+
+  /appointments/{id}/reopen:
+    post:
+      operationId: reopenAppointment
+      tags: [appointments]
+      summary: Reopen locked questionnaire (staff)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reopened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  # ── Questionnaires ────────────────────────────────────────────────────────
+  /questionnaires/{appointmentId}/consent:
+    post:
+      operationId: recordConsent
+      tags: [questionnaires]
+      summary: Record patient consent (patient auth)
+      security:
+        - patientAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentInput"
+      responses:
+        "200":
+          description: Consent recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /questionnaires/{appointmentId}:
+    get:
+      operationId: getQuestionnaire
+      tags: [questionnaires]
+      summary: Load questionnaire state (patient auth)
+      security:
+        - patientAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Questionnaire state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionnaireState"
+
+  /questionnaires/{appointmentId}/save:
+    post:
+      operationId: saveQuestionnaire
+      tags: [questionnaires]
+      summary: Save questionnaire progress (patient auth)
+      security:
+        - patientAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionnaireAnswers"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveResult"
+
+  /questionnaires/{appointmentId}/submit:
+    post:
+      operationId: submitQuestionnaire
+      tags: [questionnaires]
+      summary: Final questionnaire submission (patient auth)
+      security:
+        - patientAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionnaireAnswers"
+      responses:
+        "200":
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitResult"
+
+  /questionnaires/{appointmentId}/doctor:
+    get:
+      operationId: getDoctorQuestionnaire
+      tags: [questionnaires]
+      summary: Clinical questionnaire view (doctor)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full questionnaire record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionnaireRecord"
+
+  # ── Uploads ───────────────────────────────────────────────────────────────
+  /uploads/{appointmentId}:
+    post:
+      operationId: uploadDocument
+      tags: [uploads]
+      summary: Upload document metadata (patient auth)
+      security:
+        - patientAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentInput"
+      responses:
+        "201":
+          description: Document record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResult"
+
+    get:
+      operationId: listDocuments
+      tags: [uploads]
+      summary: List patient's own documents (patient auth)
+      security:
+        - patientAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Document"
+
+  # ── Doctor clinical ───────────────────────────────────────────────────────
+  /doctor/appointments/{id}/summaries:
+    get:
+      operationId: getAppointmentSummaries
+      tags: [doctor]
+      summary: Get templated summaries for appointment (doctor)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SummariesResult"
+
+  /doctor/appointments/{id}/documents:
+    get:
+      operationId: getDoctorDocuments
+      tags: [doctor]
+      summary: List documents for appointment (doctor)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentsResult"
+
+  /doctor/appointments/{id}/documents/{docId}/download:
+    get:
+      operationId: getDocumentDownload
+      tags: [doctor]
+      summary: Get signed download URL for document (doctor)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Download info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDownload"
+
+  /doctor/patients/{patientId}/history:
+    get:
+      operationId: getPatientHistory
+      tags: [doctor]
+      summary: Patient appointment history (doctor)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Patient history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientHistory"
+
+  # ── Admin ─────────────────────────────────────────────────────────────────
+  /admin/users:
+    post:
+      operationId: createStaffUser
+      tags: [admin]
+      summary: Create staff user (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffUserInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffUser"
+
+    get:
+      operationId: listStaffUsers
+      tags: [admin]
+      summary: List all staff users (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Staff list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffUser"
+
+  /admin/audit-log:
+    get:
+      operationId: getAuditLog
+      tags: [admin]
+      summary: Query audit log (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: appointmentId
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: actorId
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: action
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    patientAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    # ── Auth ────────────────────────────────────────────────────────────────
+    AuthCredentials:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        mfaToken:
+          type: ["string", "null"]
+
+    StaffSession:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: ["string", "null"]
+        requiresMfa:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/StaffUser"
+
+    TokenRefreshInput:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    TokenRefreshResult:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+
+    StaffUser:
+      type: object
+      required: [id, email, role, fullName, isActive, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [doctor, clinic_admin, nurse]
+        fullName:
+          type: string
+        phone:
+          type: ["string", "null"]
+        mfaEnabled:
+          type: boolean
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: ["string", "null"]
+          format: date-time
+
+    StaffUserInput:
+      type: object
+      required: [email, password, role, fullName]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+          minLength: 12
+        role:
+          type: string
+          enum: [doctor, clinic_admin, nurse]
+        fullName:
+          type: string
+        phone:
+          type: ["string", "null"]
+
+    # ── Patient Auth ────────────────────────────────────────────────────────
+    DobVerification:
+      type: object
+      required: [token, dateOfBirth]
+      properties:
+        token:
+          type: string
+        dateOfBirth:
+          type: string
+          description: "YYYY-MM-DD"
+
+    DobVerificationResult:
+      type: object
+      required: [otpSent]
+      properties:
+        otpSent:
+          type: boolean
+        phone:
+          type: ["string", "null"]
+          description: Masked phone number
+        sessionId:
+          type: ["string", "null"]
+
+    OtpVerification:
+      type: object
+      required: [token, otp]
+      properties:
+        token:
+          type: string
+        otp:
+          type: string
+
+    PatientSession:
+      type: object
+      required: [patientToken, appointmentId]
+      properties:
+        patientToken:
+          type: string
+        appointmentId:
+          type: string
+
+    # ── Appointments ────────────────────────────────────────────────────────
+    Appointment:
+      type: object
+      required: [id, invitedFullName, invitedPhone, appointmentType, scheduledAt, status, createdAt]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: ["string", "null"]
+        doctorId:
+          type: string
+        invitedFullName:
+          type: string
+        invitedPhone:
+          type: string
+        appointmentType:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft_invitation, link_sent, opened, in_progress, submitted, locked, reopened, rescheduled, cancelled]
+        labStatus:
+          type: ["string", "null"]
+        excludedFromClinicalViews:
+          type: boolean
+        originalScheduledAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        doctor:
+          $ref: "#/components/schemas/StaffUser"
+        patient:
+          $ref: "#/components/schemas/Patient"
+
+    AppointmentDetail:
+      type: object
+      required: [id, invitedFullName, invitedPhone, appointmentType, scheduledAt, status, createdAt]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: ["string", "null"]
+        doctorId:
+          type: string
+        invitedFullName:
+          type: string
+        invitedPhone:
+          type: string
+        appointmentType:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        labStatus:
+          type: ["string", "null"]
+        excludedFromClinicalViews:
+          type: boolean
+        originalScheduledAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        doctor:
+          $ref: "#/components/schemas/StaffUser"
+        patient:
+          $ref: "#/components/schemas/Patient"
+        questionnaire:
+          $ref: "#/components/schemas/QuestionnaireRecord"
+        summaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Summary"
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+
+    AppointmentInput:
+      type: object
+      required: [invitedFullName, invitedPhone, dateOfBirth, doctorId, appointmentType, scheduledAt]
+      properties:
+        invitedFullName:
+          type: string
+        invitedPhone:
+          type: string
+        dateOfBirth:
+          type: string
+          description: "YYYY-MM-DD — used for patient identity verification"
+        doctorId:
+          type: string
+        appointmentType:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+
+    AppointmentUpdate:
+      type: object
+      properties:
+        scheduledAt:
+          type: ["string", "null"]
+          format: date-time
+        appointmentType:
+          type: ["string", "null"]
+        invitedPhone:
+          type: ["string", "null"]
+        doctorId:
+          type: ["string", "null"]
+
+    AppointmentCreated:
+      type: object
+      required: [appointment]
+      properties:
+        appointment:
+          $ref: "#/components/schemas/Appointment"
+        link:
+          type: object
+          properties:
+            token:
+              type: string
+            url:
+              type: string
+        possibleDuplicate:
+          type: boolean
+
+    ResendLinkResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        linkUrl:
+          type: ["string", "null"]
+
+    # ── Patients ────────────────────────────────────────────────────────────
+    Patient:
+      type: object
+      required: [id, fullName, phone, dateOfBirth, createdAt]
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+        phone:
+          type: string
+        dateOfBirth:
+          type: string
+        sex:
+          type: ["string", "null"]
+        heightCm:
+          type: ["string", "null"]
+        matchStatus:
+          type: string
+        duplicateReviewFlag:
+          type: boolean
+        consentGivenAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    PatientHistory:
+      type: object
+      required: [patient, appointments]
+      properties:
+        patient:
+          $ref: "#/components/schemas/Patient"
+        appointments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Appointment"
+
+    # ── Questionnaires ──────────────────────────────────────────────────────
+    QuestionnaireState:
+      type: object
+      required: [isLocked, appointment]
+      properties:
+        questionnaire:
+          $ref: "#/components/schemas/QuestionnaireRecord"
+        isLocked:
+          type: boolean
+        appointment:
+          $ref: "#/components/schemas/Appointment"
+
+    QuestionnaireRecord:
+      type: object
+      required: [id, appointmentId, status, schemaVersion, createdAt]
+      properties:
+        id:
+          type: string
+        appointmentId:
+          type: string
+        status:
+          type: string
+          enum: [not_started, consent_given, in_progress, saved, submitted, locked]
+        schemaVersion:
+          type: string
+        answers:
+          type: object
+          additionalProperties: true
+        consentGivenAt:
+          type: ["string", "null"]
+          format: date-time
+        savedAt:
+          type: ["string", "null"]
+          format: date-time
+        submittedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ConsentInput:
+      type: object
+      properties:
+        consentVersion:
+          type: ["string", "null"]
+
+    QuestionnaireAnswers:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: object
+          additionalProperties: true
+
+    SaveResult:
+      type: object
+      required: [ok, savedAt, questionnaireId]
+      properties:
+        ok:
+          type: boolean
+        savedAt:
+          type: string
+          format: date-time
+        questionnaireId:
+          type: string
+
+    SubmitResult:
+      type: object
+      required: [ok, submittedAt]
+      properties:
+        ok:
+          type: boolean
+        submittedAt:
+          type: string
+          format: date-time
+
+    # ── Documents ───────────────────────────────────────────────────────────
+    Document:
+      type: object
+      required: [id, appointmentId, originalFileName, mimeType, fileSizeBytes, createdAt]
+      properties:
+        id:
+          type: string
+        appointmentId:
+          type: string
+        originalFileName:
+          type: string
+        mimeType:
+          type: string
+        fileSizeBytes:
+          type: integer
+        documentType:
+          type: ["string", "null"]
+        labStatus:
+          type: ["string", "null"]
+        deletedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    DocumentInput:
+      type: object
+      required: [originalFileName, mimeType, fileSizeBytes]
+      properties:
+        originalFileName:
+          type: string
+        mimeType:
+          type: string
+        fileSizeBytes:
+          type: integer
+        fileContentBase64:
+          type: ["string", "null"]
+        documentType:
+          type: ["string", "null"]
+        labStatus:
+          type: ["string", "null"]
+
+    UploadResult:
+      type: object
+      required: [document]
+      properties:
+        document:
+          $ref: "#/components/schemas/Document"
+        uploadUrl:
+          type: ["string", "null"]
+
+    DocumentsResult:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+
+    DocumentDownload:
+      type: object
+      required: [fileName, mimeType]
+      properties:
+        downloadUrl:
+          type: ["string", "null"]
+        fileName:
+          type: string
+        mimeType:
+          type: string
+
+    # ── Doctor Clinical ─────────────────────────────────────────────────────
+    Summary:
+      type: object
+      required: [id, appointmentId, variant, content, generatedAt, templateVersion]
+      properties:
+        id:
+          type: string
+        appointmentId:
+          type: string
+        variant:
+          type: string
+          enum: [current_visit, current_visit_plus_history]
+        content:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        templateVersion:
+          type: string
+
+    SummariesResult:
+      type: object
+      required: [summaries]
+      properties:
+        summaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Summary"
+
+    # ── Admin ───────────────────────────────────────────────────────────────
+    AuditLogEntry:
+      type: object
+      required: [id, action, actorType, outcome, createdAt]
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+        actorType:
+          type: string
+          enum: [staff, patient, system, unauthenticated]
+        actorId:
+          type: ["string", "null"]
+        actorEmail:
+          type: ["string", "null"]
+        appointmentId:
+          type: ["string", "null"]
+        patientId:
+          type: ["string", "null"]
+        ipAddress:
+          type: ["string", "null"]
+        outcome:
+          type: string
+          enum: [success, failure, blocked]
+        detail:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time

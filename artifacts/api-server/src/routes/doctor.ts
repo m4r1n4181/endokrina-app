@@ -10,6 +10,7 @@ import { requireStaffAuth } from "../middlewares/authenticate";
 import { clinicalContentGuard } from "../middlewares/rbac";
 import { writeAuditLog, userAuditCtx } from "../services/audit";
 import { extractClientIp } from "../middlewares/audit-middleware";
+import { readStubDocument } from "../lib/document-storage";
 
 const router = Router();
 
@@ -85,7 +86,7 @@ router.get("/appointments/:id/documents", async (req, res, next) => {
   }
 });
 
-// GET /api/doctor/appointments/:id/documents/:docId/download — get signed download URL
+// GET /api/doctor/appointments/:id/documents/:docId/download — get file URL
 router.get("/appointments/:id/documents/:docId/download", async (req, res, next) => {
   try {
     const { id, docId } = req.params as Record<string, string>;
@@ -116,14 +117,56 @@ router.get("/appointments/:id/documents/:docId/download", async (req, res, next)
       outcome: "success",
     });
 
-    // TODO: generate signed S3 URL (or serve directly if STORAGE_PROVIDER=stub)
-    // For Phase 1, return the storage key location placeholder
     res.json({
-      downloadUrl: null, // will be a signed S3 URL in Phase 2
+      downloadUrl: `/api/doctor/appointments/${id}/documents/${docId}/file`,
       fileName: doc.originalFileName,
       mimeType: doc.mimeType,
-      _note: "Storage integration not yet wired — Phase 2",
+      _note: "Use the file endpoint for download/view.",
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/doctor/appointments/:id/documents/:docId/file — stream the stored file
+router.get("/appointments/:id/documents/:docId/file", async (req, res, next) => {
+  try {
+    const { id, docId } = req.params as Record<string, string>;
+    const disposition = req.query.disposition === "inline" ? "inline" : "attachment";
+    const ip = extractClientIp(req);
+    const userId = req.user!.sub;
+
+    const [doc] = await db
+      .select()
+      .from(uploadedDocumentsTable)
+      .where(
+        and(
+          eq(uploadedDocumentsTable.id, docId),
+          eq(uploadedDocumentsTable.appointmentId, id)
+        )
+      )
+      .limit(1);
+
+    if (!doc || doc.deletedAt) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+
+    const fileBytes = await readStubDocument(doc.storageKey);
+
+    await writeAuditLog({
+      ctx: userAuditCtx(userId, req.user!.role, ip),
+      action: AUDIT_ACTIONS.DOCUMENT_DOWNLOAD,
+      targetType: "document",
+      targetId: docId,
+      outcome: "success",
+      context: { disposition },
+    });
+
+    res.setHeader("Content-Type", doc.mimeType);
+    const safeFileName = doc.originalFileName.replace(/"/g, '\\"');
+    res.setHeader("Content-Disposition", `${disposition}; filename="${safeFileName}"`);
+    res.send(fileBytes);
   } catch (err) {
     next(err);
   }
@@ -143,6 +186,8 @@ router.get("/patients/:patientId/history", async (req, res, next) => {
         dateOfBirth: patientsTable.dateOfBirth,
         sex: patientsTable.sex,
         heightCm: patientsTable.heightCm,
+        phone: patientsTable.phone,
+        createdAt: patientsTable.createdAt,
       })
       .from(patientsTable)
       .where(eq(patientsTable.id, patientId))
