@@ -12,6 +12,7 @@ import { logger } from "../lib/logger";
 import { extractClientIp } from "../middlewares/audit-middleware";
 import argon2 from "argon2";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
 
 const router = Router();
 
@@ -20,8 +21,16 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts, try again later", code: "RATE_LIMITED" },
+});
+
 // POST /api/auth/login
-router.post("/login", async (req, res, next) => {
+router.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const parse = loginSchema.safeParse(req.body);
     if (!parse.success) {
