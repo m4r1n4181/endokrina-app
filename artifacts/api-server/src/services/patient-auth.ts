@@ -29,7 +29,39 @@ export interface PatientSessionPayload {
  * Generate a cryptographically random preparation link token.
  */
 export function generateLinkToken(): string {
-  return crypto.randomBytes(48).toString("hex");
+  const payload = crypto.randomBytes(48).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", config.MAGIC_LINK_SECRET)
+    .update(payload)
+    .digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+/**
+ * Verify the HMAC portion of a preparation link before looking it up.
+ */
+export function verifyLinkToken(token: string): boolean {
+  const separator = token.lastIndexOf(".");
+  if (separator <= 0 || separator === token.length - 1) return false;
+
+  const payload = token.slice(0, separator);
+  const providedSignature = token.slice(separator + 1);
+  const expectedSignature = crypto
+    .createHmac("sha256", config.MAGIC_LINK_SECRET)
+    .update(payload)
+    .digest("base64url");
+
+  const provided = Buffer.from(providedSignature);
+  const expected = Buffer.from(expectedSignature);
+  return provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
+}
+
+/**
+ * Check the configured lifetime of a preparation link.
+ */
+export function isMagicLinkExpired(link: Pick<PreparationLink, "createdAt">): boolean {
+  const expiresAt = new Date(link.createdAt).getTime() + config.MAGIC_LINK_EXPIRES_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() >= expiresAt;
 }
 
 /**

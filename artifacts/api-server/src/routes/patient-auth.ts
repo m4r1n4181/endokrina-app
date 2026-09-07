@@ -18,6 +18,8 @@ import {
   isOtpBlocked,
   blockUntil,
   signPatientSession,
+  verifyLinkToken,
+  isMagicLinkExpired,
 } from "../services/patient-auth";
 import { writeAuditLog, linkAuditCtx, unauthAuditCtx } from "../services/audit";
 import { sendSmsOtp } from "../services/sms";
@@ -32,6 +34,35 @@ const verifyDobSchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
 });
 
+const linkStatusSchema = z.object({
+  token: z.string().min(1),
+});
+
+router.get("/link-status", async (req, res, next) => {
+  try {
+    const parse = linkStatusSchema.safeParse(req.query);
+    if (!parse.success || !verifyLinkToken(parse.data.token)) {
+      res.status(200).json({ status: "inactive" });
+      return;
+    }
+
+    const [link] = await db
+      .select({ status: preparationLinksTable.status, createdAt: preparationLinksTable.createdAt })
+      .from(preparationLinksTable)
+      .where(eq(preparationLinksTable.token, parse.data.token))
+      .limit(1);
+
+    if (!link || link.status !== "active") {
+      res.status(200).json({ status: "inactive" });
+      return;
+    }
+
+    res.status(200).json({ status: isMagicLinkExpired(link) ? "expired" : "active" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/patient-auth/verify-dob
 // Step 1: patient opens link token, submits DOB
 router.post("/verify-dob", async (req, res, next) => {
@@ -43,6 +74,11 @@ router.post("/verify-dob", async (req, res, next) => {
     }
     const { token, dateOfBirth } = parse.data;
     const ip = extractClientIp(req);
+
+    if (!verifyLinkToken(token)) {
+      res.status(404).json({ error: "Link not found or inactive", code: "LINK_INACTIVE" });
+      return;
+    }
 
     // Look up the link
     const [link] = await db
@@ -60,6 +96,11 @@ router.post("/verify-dob", async (req, res, next) => {
         context: { reason: link ? `link_status_${link.status}` : "link_not_found" },
       });
       res.status(404).json({ error: "Link not found or inactive", code: "LINK_INACTIVE" });
+      return;
+    }
+
+    if (isMagicLinkExpired(link)) {
+      res.status(410).json({ error: "Link expired", code: "LINK_EXPIRED" });
       return;
     }
 
@@ -148,7 +189,6 @@ router.post("/verify-dob", async (req, res, next) => {
     const otpCode = generateOtpCode();
     const otpHash = hashOtp(otpCode);
     const otpExpiresAt = new Date(Date.now() + config.OTP_EXPIRES_MINUTES * 60 * 1000);
-
     await db.update(preparationLinksTable)
       .set({
         dobAttemptCount: 0,
@@ -202,6 +242,11 @@ router.post("/verify-otp", async (req, res, next) => {
     const { token, otp } = parse.data;
     const ip = extractClientIp(req);
 
+    if (!verifyLinkToken(token)) {
+      res.status(404).json({ error: "Link not found or inactive", code: "LINK_INACTIVE" });
+      return;
+    }
+
     const [link] = await db
       .select()
       .from(preparationLinksTable)
@@ -210,6 +255,11 @@ router.post("/verify-otp", async (req, res, next) => {
 
     if (!link || link.status !== "active") {
       res.status(404).json({ error: "Link not found or inactive", code: "LINK_INACTIVE" });
+      return;
+    }
+
+    if (isMagicLinkExpired(link)) {
+      res.status(410).json({ error: "Link expired", code: "LINK_EXPIRED" });
       return;
     }
 
@@ -287,7 +337,6 @@ router.post("/verify-otp", async (req, res, next) => {
     next(err);
   }
 });
-
 // Mask phone for client response (e.g. +381 ** *** **89)
 function maskPhone(phone: string): string {
   if (phone.length < 4) return "****";

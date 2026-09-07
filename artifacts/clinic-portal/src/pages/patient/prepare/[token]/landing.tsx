@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { useVerifyDob } from '@workspace/api-client-react';
 import { z } from 'zod';
@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Stethoscope, ShieldCheck } from 'lucide-react';
+import { Clock3, Link2Off, LoaderCircle, ShieldCheck, Stethoscope } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const dobSchema = z.object({
@@ -20,6 +20,35 @@ export default function PrepareLanding() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const verifyMutation = useVerifyDob();
+  const [linkStatus, setLinkStatus] = useState<'checking' | 'active' | 'expired' | 'inactive'>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!token) {
+      setLinkStatus('inactive');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetch(`/api/patient-auth/link-status?token=${encodeURIComponent(token)}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Link status unavailable');
+        return response.json() as Promise<{ status?: string }>;
+      })
+      .then((result) => {
+        if (cancelled) return;
+        setLinkStatus(result.status === 'active' ? 'active' : result.status === 'expired' ? 'expired' : 'inactive');
+      })
+      .catch(() => {
+        if (!cancelled) setLinkStatus('inactive');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const form = useForm<z.infer<typeof dobSchema>>({
     resolver: zodResolver(dobSchema),
@@ -48,9 +77,37 @@ export default function PrepareLanding() {
     });
   };
 
+  const isUnavailable = linkStatus === 'expired' || linkStatus === 'inactive';
+
   return (
     <div className="min-h-screen bg-patient-portal-gradient flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 p-8">
+        {linkStatus === 'checking' && (
+          <div className="min-h-72 flex flex-col items-center justify-center text-center">
+            <LoaderCircle className="w-10 h-10 text-[#185e46] animate-spin mb-5" aria-hidden="true" />
+            <h1 className="text-2xl font-serif text-[#185e46] mb-2">Provera linka</h1>
+            <p className="text-gray-600">Trenutak, proveravamo da li je pozivnica aktivna.</p>
+          </div>
+        )}
+
+        {isUnavailable && (
+          <div className="min-h-72 flex flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mb-6">
+              {linkStatus === 'expired' ? <Clock3 size={32} aria-hidden="true" /> : <Link2Off size={32} aria-hidden="true" />}
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 mb-3">Pristup nije dostupan</p>
+            <h1 className="text-2xl font-serif text-[#185e46] mb-4">
+              {linkStatus === 'expired' ? 'Link je istekao' : 'Link nije aktivan'}
+            </h1>
+            <p className="text-gray-600 leading-relaxed">
+              {linkStatus === 'expired'
+                ? 'Ova pozivnica više nije važeća. Kontaktirajte kliniku ako vam je potreban novi link.'
+                : 'Ova pozivnica nije dostupna. Proverite da li ste otvorili najnoviji link ili kontaktirajte kliniku.'}
+            </p>
+          </div>
+        )}
+
+        {linkStatus === 'active' && <>
         <div className="text-center space-y-6 mb-8">
           <div className="mx-auto w-16 h-16 bg-[#185e46] rounded-2xl flex items-center justify-center text-white shadow-lg shadow-[#185e46]/20">
             <Stethoscope size={32} />
@@ -98,6 +155,7 @@ export default function PrepareLanding() {
             </Button>
           </form>
         </Form>
+        </>}
       </div>
     </div>
   );

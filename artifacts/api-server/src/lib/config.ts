@@ -21,7 +21,7 @@ const configSchema = z.object({
   // Magic link signing
   MAGIC_LINK_SECRET: z.string().min(32, "MAGIC_LINK_SECRET must be at least 32 characters"),
   // Link valid until appointment (not a short window) — per legal decision
-  MAGIC_LINK_EXPIRES_DAYS: z.coerce.number().default(365), // practical upper bound
+  MAGIC_LINK_EXPIRES_DAYS: z.coerce.number().default(30), // practical upper bound
 
   // Patient identity verification — rate limiting
   DOB_MAX_ATTEMPTS: z.coerce.number().default(5),
