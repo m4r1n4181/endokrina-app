@@ -56,6 +56,14 @@ function shouldShow(q: Question, answers: Record<string, unknown>): boolean {
   return expected.includes(normalized);
 }
 
+function hasMedicationAnswers(value: unknown): boolean {
+  return Array.isArray(value) && value.some((row) => {
+    if (!row || typeof row !== 'object') return false;
+    const medication = row as Partial<MedRow>;
+    return Boolean(medication.name || medication.dose || medication.frequency);
+  });
+}
+
 export default function PrepareQuestionnaire() {
   const { token } = useParams();
   const [, setLocation] = useLocation();
@@ -82,24 +90,42 @@ export default function PrepareQuestionnaire() {
 
   const initRef = useRef(false);
   useEffect(() => {
-    if (data?.questionnaire?.answers && !initRef.current) {
-      const raw = data.questionnaire.answers as Record<string, unknown>;
-      // Flatten legacy nested section answers if present
+    if (initRef.current) return;
+
+    const questionnaireAnswers = data?.questionnaire?.answers as Record<string, unknown> | undefined;
+    if (questionnaireAnswers && Object.keys(questionnaireAnswers).length > 0) {
+      // postojeća logika ostaje ista (flatten legacy nested answers)
+      const raw = questionnaireAnswers;
       const flat: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(raw)) {
         if (v && typeof v === 'object' && !Array.isArray(v) && schema?.sections.some((s) => s.id === k)) {
-          Object.assign(flat, v as Record<string, unknown>);
+          Object.assign(flat, v);
         } else {
           flat[k] = v;
         }
       }
       setAnswers(flat);
       initRef.current = true;
+    } else if (data?.prefill && schema) {
+      // nov upitnik za ovaj appointment, ali pacijent je vraćajući —
+      // predlaži samo prefillable polja, pacijent i dalje može da ih izmeni
+      setAnswers(data.prefill as Record<string, unknown>);
+      initRef.current = true;
     }
   }, [data, schema]);
 
   const sections = schema?.sections ?? [];
   const currentSection = sections[currentSectionIdx];
+  const hasPrefilledProfile = Boolean(data?.prefill && Object.keys(data.prefill).length > 0);
+  const hasExistingProfile = ['full_name', 'date_of_birth', 'sex', 'height_cm'].some((key) => key in answers);
+  const profileTitle = hasPrefilledProfile || hasExistingProfile
+    ? 'Lični podaci (prefilirani — proverite tačnost)'
+    : 'Lični podaci';
+  const currentSectionTitle = currentSection?.id === 'stable_profile' ? profileTitle : currentSection?.title;
+  const hasPreviousMedication = Boolean(
+    hasMedicationAnswers(data?.questionnaire?.answers?.current_thyroid_therapy) ||
+    hasMedicationAnswers(data?.questionnaire?.answers?.other_medications),
+  );
 
   const visibleQuestions = useMemo(() => {
     if (!currentSection) return [];
@@ -195,8 +221,10 @@ export default function PrepareQuestionnaire() {
     return (
       <div key={q.id} className="mb-6 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
         <Label className="text-base font-medium text-gray-800 mb-1 block">{q.label}</Label>
-        {q.hint && <p className="text-sm text-gray-500 mb-3">{q.hint}</p>}
-        {q.mustConfirm && (
+        {q.hint && (!q.mustConfirm || hasPreviousMedication) && (
+          <p className="text-sm text-gray-500 mb-3">{q.hint}</p>
+        )}
+        {q.mustConfirm && hasPreviousMedication && (
           <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3 mb-3">
             Prošli put ste naveli da uzimate ovaj lek. Da li ga i dalje uzimate u istoj dozi? Potvrdite, izmenite ili uklonite.
           </p>
@@ -301,7 +329,7 @@ export default function PrepareQuestionnaire() {
         <p className="text-sm text-gray-500 mb-2">
           Podaci su pacijent-prijavljeni (nisu verifikovani klinički nalazi). Ovaj formular ne zamenjuje zvaničnu evidenciju.
         </p>
-        <h2 className="text-2xl font-serif text-gray-900 mb-6">{currentSection.title}</h2>
+        <h2 className="text-2xl font-serif text-gray-900 mb-6">{currentSectionTitle}</h2>
         <div className="space-y-2">{visibleQuestions.map(renderQuestion)}</div>
       </main>
 

@@ -289,8 +289,15 @@ export interface PatientHistory {
   appointments: Appointment[];
 }
 
+/**
+ * @nullable
+ */
+export type QuestionnaireStatePrefill = { [key: string]: unknown } | null;
+
 export interface QuestionnaireState {
   questionnaire?: QuestionnaireRecord;
+  /** @nullable */
+  prefill: QuestionnaireStatePrefill;
   isLocked: boolean;
   appointment: Appointment;
 }

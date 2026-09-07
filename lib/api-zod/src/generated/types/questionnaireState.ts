@@ -7,9 +7,12 @@
  */
 import type { Appointment } from './appointment';
 import type { QuestionnaireRecord } from './questionnaireRecord';
+import type { QuestionnaireStatePrefill } from './questionnaireStatePrefill';
 
 export interface QuestionnaireState {
   questionnaire?: QuestionnaireRecord;
+  /** @nullable */
+  prefill: QuestionnaireStatePrefill;
   isLocked: boolean;
   appointment: Appointment;
 }

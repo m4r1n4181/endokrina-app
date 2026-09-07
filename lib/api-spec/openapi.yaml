@@ -1028,10 +1028,13 @@ components:
     # ── Questionnaires ──────────────────────────────────────────────────────
     QuestionnaireState:
       type: object
-      required: [isLocked, appointment]
+      required: [prefill, isLocked, appointment]
       properties:
         questionnaire:
           $ref: "#/components/schemas/QuestionnaireRecord"
+        prefill:
+          type: ["object", "null"]
+          additionalProperties: true
         isLocked:
           type: boolean
         appointment:

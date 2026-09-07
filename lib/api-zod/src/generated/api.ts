@@ -420,6 +420,7 @@ export const GetQuestionnaireResponse = zod.object({
   "submittedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date()
 }).optional(),
+  "prefill": zod.record(zod.string(), zod.unknown()).nullable(),
   "isLocked": zod.boolean(),
   "appointment": zod.object({
   "id": zod.string(),

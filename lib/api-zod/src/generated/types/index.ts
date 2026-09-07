@@ -40,6 +40,7 @@ export * from './questionnaireRecord';
 export * from './questionnaireRecordAnswers';
 export * from './questionnaireRecordStatus';
 export * from './questionnaireState';
+export * from './questionnaireStatePrefill';
 export * from './resendLinkResult';
 export * from './saveResult';
 export * from './staffSession';

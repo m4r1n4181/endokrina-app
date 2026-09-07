@@ -73,6 +73,13 @@ router.post("/", adminOnly, async (req, res, next) => {
 
     // Create patient record if no exact match
     let patientId: string | null = existingPatient?.id ?? null;
+    if (existingPatient && existingPatient.matchStatus !== "auto_linked") {
+      await db
+        .update(patientsTable)
+        .set({ matchStatus: "auto_linked", updatedAt: new Date() })
+        .where(eq(patientsTable.id, existingPatient.id));
+    }
+
     if (!existingPatient) {
       const [newPatient] = await db
         .insert(patientsTable)
