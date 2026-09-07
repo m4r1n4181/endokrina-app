@@ -25,7 +25,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../.env") });
 
 import * as argon2 from "argon2";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq } from "drizzle-orm";
@@ -52,6 +52,16 @@ const db = drizzle(pool, { schema });
 
 async function hashPassword(password: string) {
   return argon2.hash(password, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4 });
+}
+
+function generateSignedLinkToken(): string {
+  const secret = process.env.MAGIC_LINK_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error("MAGIC_LINK_SECRET must be set and at least 32 characters long");
+  }
+  const payload = randomBytes(48).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
 }
 
 function tomorrow10am() {
@@ -190,7 +200,7 @@ async function seed() {
     token = existingLink.token;
     console.log(`  ✓  Preparation link already exists`);
   } else {
-    token = randomBytes(48).toString("base64url");
+    token = generateSignedLinkToken();
     await db.insert(preparationLinksTable).values({
       appointmentId,
       token,
