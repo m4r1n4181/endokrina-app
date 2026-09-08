@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { usePatientAuth } from '@/hooks/use-patient-auth';
-import { useListDocuments, useUploadDocument, getListDocumentsQueryKey, Document } from '@workspace/api-client-react';
+import { customFetch, useListDocuments, getListDocumentsQueryKey, Document } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,6 @@ export default function PrepareDocuments() {
     },
   });
 
-  const uploadMutation = useUploadDocument();
   const [isUploading, setIsUploading] = useState(false);
   const [labStatus, setLabStatus] = useState<string>('');
   const [labSaving, setLabSaving] = useState(false);
@@ -51,44 +50,31 @@ export default function PrepareDocuments() {
       return;
     }
 
-    const reader = new FileReader();
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('documentType', 'lab_result');
+    formData.append('labStatus', 'uploaded_digitally');
 
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-
-      setIsUploading(true);
-      uploadMutation.mutate(
-        {
-          appointmentId,
-          data: {
-            originalFileName: file.name,
-            mimeType: file.type || 'application/pdf',
-            fileSizeBytes: file.size,
-            documentType: 'lab_result',
-            fileContentBase64: result,
-            labStatus: 'uploaded_digitally',
-          },
-        },
-        {
-          onSuccess: () => {
-            toast({ title: 'Dokument uspešno dodat' });
-            setLabStatus('uploaded_digitally');
-            queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey(appointmentId) });
-            setIsUploading(false);
-          },
-          onError: () => {
-            toast({ title: 'Greška pri otpremanju', variant: 'destructive' });
-            setIsUploading(false);
-          },
-        }
-      );
-    };
-
-    reader.onerror = () => {
-      toast({ title: 'Greška pri čitanju fajla', variant: 'destructive' });
-    };
-
-    reader.readAsDataURL(file);
+    setIsUploading(true);
+    customFetch(`/api/uploads/${appointmentId}`, {
+      method: 'POST',
+      body: formData,
+      responseType: 'json',
+    })
+      .then(() => {
+        toast({ title: 'Dokument uspešno dodat' });
+        setLabStatus('uploaded_digitally');
+        queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey(appointmentId) });
+      })
+      .catch((error: any) => {
+        const description = error?.data?.code === 'FILE_TOO_LARGE'
+          ? 'Fajl je prevelik. Maksimalna veličina je 20MB.'
+          : error?.data?.code === 'UNSUPPORTED_FILE_TYPE'
+            ? 'Dozvoljeni su PDF, JPG i PNG fajlovi.'
+            : 'Pokušajte ponovo.';
+        toast({ title: 'Greška pri otpremanju', description, variant: 'destructive' });
+      })
+      .finally(() => setIsUploading(false));
   };
 
   const saveLabStatus = async (value: string) => {
@@ -153,7 +139,7 @@ export default function PrepareDocuments() {
             type="file"
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             onChange={handleFileUpload}
-            disabled={isUploading || uploadMutation.isPending}
+            disabled={isUploading}
             accept=".pdf,.jpg,.jpeg,.png"
           />
           <div className="w-16 h-16 bg-[#185e46]/10 text-[#185e46] rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -162,7 +148,7 @@ export default function PrepareDocuments() {
           <h3 className="text-lg font-medium text-gray-900 mb-1">Dodirnite da dodate dokument</h3>
           <p className="text-sm text-gray-500">PDF, JPG, PNG (maksimalno 20MB)</p>
 
-          {(isUploading || uploadMutation.isPending) && (
+          {isUploading && (
             <div className="mt-4 flex items-center justify-center gap-2 text-[#185e46]">
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent" />
               <span>Otpremanje...</span>

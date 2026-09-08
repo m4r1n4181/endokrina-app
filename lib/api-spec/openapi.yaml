@@ -476,7 +476,7 @@ paths:
     post:
       operationId: uploadDocument
       tags: [uploads]
-      summary: Upload document metadata (patient auth)
+      summary: Upload document (patient auth)
       security:
         - patientAuth: []
       parameters:
@@ -488,7 +488,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               $ref: "#/components/schemas/DocumentInput"
       responses:
@@ -1133,16 +1133,11 @@ components:
 
     DocumentInput:
       type: object
-      required: [originalFileName, mimeType, fileSizeBytes]
+      required: [file]
       properties:
-        originalFileName:
+        file:
           type: string
-        mimeType:
-          type: string
-        fileSizeBytes:
-          type: integer
-        fileContentBase64:
-          type: ["string", "null"]
+          format: binary
         documentType:
           type: ["string", "null"]
         labStatus:

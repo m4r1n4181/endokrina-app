@@ -7,7 +7,7 @@
  * Phase 1: upload metadata is recorded; actual file storage is stubbed.
  * Phase 2: wire to S3 with server-side encryption (SSE-S3 or SSE-KMS).
  */
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, uploadedDocumentsTable, appointmentsTable, AUDIT_ACTIONS } from "../lib/db";
 import { eq } from "drizzle-orm";
 import { requirePatientAuth } from "../middlewares/authenticate";
@@ -18,15 +18,12 @@ import { ALLOWED_UPLOAD_MIME_TYPES } from "@workspace/db";
 import crypto from "crypto";
 import { saveStubDocument } from "../lib/document-storage";
 import { z } from "zod";
+import multer from "multer";
 
 const router = Router();
 
 const uploadMetaSchema = z.object({
-  originalFileName: z.string().min(1).max(255),
-  mimeType: z.enum(ALLOWED_UPLOAD_MIME_TYPES),
-  fileSizeBytes: z.number().int().positive(),
   documentType: z.string().optional(),
-  fileContentBase64: z.string().min(1).optional(),
   labStatus: z.enum([
     "uploaded_digitally",
     "will_bring_physical",
@@ -35,6 +32,25 @@ const uploadMetaSchema = z.object({
     "not_required",
   ]).optional(),
 });
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.MAX_UPLOAD_SIZE_BYTES },
+});
+
+function uploadFile(req: Request, res: Response, next: NextFunction): void {
+  upload.single("file")(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({
+        error: "File too large",
+        code: "FILE_TOO_LARGE",
+        maxBytes: config.MAX_UPLOAD_SIZE_BYTES,
+      });
+      return;
+    }
+    next(err);
+  });
+}
 
 /**
  * POST /api/uploads/:appointmentId
@@ -48,7 +64,7 @@ const uploadMetaSchema = z.object({
  *
  * Phase 2: replace stub with real presigned S3 PUT URL.
  */
-router.post("/:appointmentId", requirePatientAuth, async (req, res, next) => {
+router.post("/:appointmentId", requirePatientAuth, uploadFile, async (req, res, next) => {
   try {
     const { appointmentId } = req.params as Record<string, string>;
     const ip = extractClientIp(req);
@@ -79,32 +95,23 @@ router.post("/:appointmentId", requirePatientAuth, async (req, res, next) => {
       return;
     }
 
+    if (!req.file) {
+      res.status(400).json({ error: "A file is required", code: "FILE_REQUIRED" });
+      return;
+    }
+
+    if (!ALLOWED_UPLOAD_MIME_TYPES.includes(req.file.mimetype as (typeof ALLOWED_UPLOAD_MIME_TYPES)[number])) {
+      res.status(400).json({ error: "Unsupported file type", code: "UNSUPPORTED_FILE_TYPE" });
+      return;
+    }
+
     const parse = uploadMetaSchema.safeParse(req.body);
     if (!parse.success) {
       res.status(400).json({ error: "Invalid request", issues: parse.error.issues });
       return;
     }
-    const { originalFileName, mimeType, fileSizeBytes, documentType, fileContentBase64, labStatus } = parse.data;
-
-    if (fileSizeBytes > config.MAX_UPLOAD_SIZE_BYTES) {
-      res.status(413).json({
-        error: "File too large",
-        code: "FILE_TOO_LARGE",
-        maxBytes: config.MAX_UPLOAD_SIZE_BYTES,
-      });
-      return;
-    }
-
-    let fileBytes: Buffer | null = null;
-    if (fileContentBase64) {
-      const normalizedBase64 = fileContentBase64.includes(",") ? fileContentBase64.split(",", 2)[1] : fileContentBase64;
-      fileBytes = Buffer.from(normalizedBase64, "base64");
-
-      if (fileBytes.length === 0) {
-        res.status(400).json({ error: "Invalid file content" });
-        return;
-      }
-    }
+    const { documentType, labStatus } = parse.data;
+    const { originalname: originalFileName, mimetype: mimeType, size: fileSizeBytes, buffer: fileBytes } = req.file;
 
     // Generate a storage key — opaque, non-guessable, not derived from patient data
     const storageKey = `appointments/${appointmentId}/docs/${crypto.randomBytes(24).toString("hex")}`;
@@ -154,7 +161,7 @@ router.post("/:appointmentId", requirePatientAuth, async (req, res, next) => {
       document: doc,
       // Phase 2: this will be a signed S3 PUT URL for the actual file upload
       uploadUrl: null,
-      _note: fileContentBase64 ? "File saved in stub storage." : "File storage not yet wired — Phase 2. Record created in DB.",
+      _note: "File saved in stub storage.",
     });
   } catch (err) {
     next(err);
