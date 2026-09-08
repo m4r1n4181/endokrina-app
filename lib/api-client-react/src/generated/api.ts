@@ -1489,17 +1489,25 @@ export const getUploadDocumentUrl = (appointmentId: string,) => {
 }
 
 /**
- * @summary Upload document metadata (patient auth)
+ * @summary Upload document (patient auth)
  */
 export const uploadDocument = async (appointmentId: string,
     documentInput: DocumentInput, options?: RequestInit): Promise<UploadResult> => {
+    const formData = new FormData();
+formData.append(`file`, documentInput.file);
+if(documentInput.documentType !== undefined && documentInput.documentType !== null) {
+ formData.append(`documentType`, documentInput.documentType);
+ }
+if(documentInput.labStatus !== undefined && documentInput.labStatus !== null) {
+ formData.append(`labStatus`, documentInput.labStatus);
+ }
 
   return customFetch<UploadResult>(getUploadDocumentUrl(appointmentId),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(documentInput)
+    method: 'POST'
+    ,
+    body: formData
   }
 );}
 
@@ -1539,7 +1547,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UploadDocumentMutationError = ErrorType<unknown>
 
     /**
- * @summary Upload document metadata (patient auth)
+ * @summary Upload document (patient auth)
  */
 export const useUploadDocument = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadDocument>>, TError,{appointmentId: string;data: BodyType<DocumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

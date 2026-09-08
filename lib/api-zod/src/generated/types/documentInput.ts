@@ -7,11 +7,7 @@
  */
 
 export interface DocumentInput {
-  originalFileName: string;
-  mimeType: string;
-  fileSizeBytes: number;
-  /** @nullable */
-  fileContentBase64?: string | null;
+  file: Blob;
   /** @nullable */
   documentType?: string | null;
   /** @nullable */

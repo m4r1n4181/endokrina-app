@@ -519,17 +519,14 @@ export const GetDoctorQuestionnaireResponse = zod.object({
 
 
 /**
- * @summary Upload document metadata (patient auth)
+ * @summary Upload document (patient auth)
  */
 export const UploadDocumentParams = zod.object({
   "appointmentId": zod.coerce.string()
 })
 
 export const UploadDocumentBody = zod.object({
-  "originalFileName": zod.string(),
-  "mimeType": zod.string(),
-  "fileSizeBytes": zod.number(),
-  "fileContentBase64": zod.string().nullish(),
+  "file": zod.instanceof(File),
   "documentType": zod.string().nullish(),
   "labStatus": zod.string().nullish()
 })
