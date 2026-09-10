@@ -81,7 +81,12 @@ const configSchema = z.object({
   APP_BASE_URL: z.string().default("http://localhost:5000"),
   // Patient/staff portal URL — magic links must open the frontend, not the API
   PORTAL_BASE_URL: z.string().default("http://localhost:5173"),
-});
+})
+
+.refine(
+  (cfg) => !(cfg.NODE_ENV === "production" && cfg.CORS_ORIGINS === "*"),
+  { message: "CORS_ORIGINS cannot be '*' in production", path: ["CORS_ORIGINS"] }
+);
 
 function loadConfig() {
   const result = configSchema.safeParse(process.env);
