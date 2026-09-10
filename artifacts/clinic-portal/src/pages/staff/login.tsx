@@ -1,4 +1,5 @@
 import { useLocation } from 'wouter';
+import { useState } from 'react';
 import { useLoginStaff } from '@workspace/api-client-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -8,18 +9,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
 import { Stethoscope } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Unesite ispravan email'),
   password: z.string().min(1, 'Lozinka je obavezna'),
+  mfaToken: z.string().optional(),
 });
 
 export default function LoginStaff() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const loginMutation = useLoginStaff();
+  const [requiresMfa, setRequiresMfa] = useState(false);
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -37,6 +41,10 @@ export default function LoginStaff() {
           setLocation('/dashboard');
         },
         onError: (err: any) => {
+          if (err?.data?.code === 'MFA_REQUIRED') {
+            setRequiresMfa(true);
+            return;
+          }
           toast({
             title: 'Prijava nije uspela',
             description: err?.data?.error || 'Pogrešni podaci. Pokušajte ponovo.',
@@ -88,6 +96,31 @@ export default function LoginStaff() {
                   </FormItem>
                 )}
               />
+              {requiresMfa && (
+                <FormField
+                  control={form.control}
+                  name="mfaToken"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>MFA kod</FormLabel>
+                      <FormControl>
+                        <InputOTP maxLength={6} {...field}>
+                          <InputOTPGroup className="gap-2">
+                            {Array.from({ length: 6 }, (_, index) => (
+                              <InputOTPSlot
+                                key={index}
+                                index={index}
+                                className="w-12 h-14 text-2xl border-gray-300 rounded-md"
+                              />
+                            ))}
+                          </InputOTPGroup>
+                        </InputOTP>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <Button
                 type="submit"
                 className="w-full"

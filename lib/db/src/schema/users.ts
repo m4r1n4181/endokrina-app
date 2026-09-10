@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,9 +16,13 @@ export const usersTable = pgTable("users", {
   role: userRoleEnum("role").notNull(),
   fullName: text("full_name").notNull(),
   phone: text("phone"),
-  // MFA — default ON per compliance requirement
-  mfaEnabled: boolean("mfa_enabled").notNull().default(true),
+  // SMS MFA is opt-in during the development phase.
+  mfaEnabled: boolean("mfa_enabled").notNull().default(false),
   mfaSecret: text("mfa_secret"), // TOTP secret (encrypted at application layer)
+  mfaOtpHash: text("mfa_otp_hash"),
+  mfaOtpExpiresAt: timestamp("mfa_otp_expires_at", { withTimezone: true }),
+  mfaOtpAttemptCount: integer("mfa_otp_attempt_count").notNull().default(0),
+  mfaOtpBlockedUntil: timestamp("mfa_otp_blocked_until", { withTimezone: true }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

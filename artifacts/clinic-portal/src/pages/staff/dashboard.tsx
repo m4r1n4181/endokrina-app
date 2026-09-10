@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Stethoscope, Calendar, Plus, Clock, Users, Activity, FileText, LayoutDashboard, Menu, ChevronLeft } from 'lucide-react';
+import { Stethoscope, Calendar, Plus, Clock, Users, Activity, FileText, LayoutDashboard, Menu, ChevronLeft, ShieldCheck } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from '@/components/ui/sheet';
 
@@ -48,6 +48,7 @@ export function StaffLayout({ children, title }: { children: React.ReactNode; ti
           { label: 'Revizijski dnevnik', icon: FileText, href: '/admin/audit' },
         ]
       : []),
+      { label: 'Bezbednost', icon: ShieldCheck, href: '/security' },
   ];
 
   return (
