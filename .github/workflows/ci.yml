@@ -26,6 +26,8 @@ jobs:
       JWT_SECRET: test-secret-min-32-characters-long-ok
       MAGIC_LINK_SECRET: test-secret-min-32-characters-long-ok
       NODE_ENV: test
+      PORT: "4173"
+      BASE_PATH: /
       SMS_PROVIDER: stub
       STORAGE_PROVIDER: stub
       EMAIL_PROVIDER: stub
@@ -47,6 +49,6 @@ jobs:
       - name: Configure test environment
         run: printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env.test
 
-      - run: pnpm -r --if-present run typecheck
+      - run: pnpm run typecheck
       - run: pnpm -r --if-present run build
       - run: pnpm test
