@@ -29,3 +29,5 @@ pnpm --filter @workspace/api-server exec vitest run src/routes/__tests__/auth.te
 The auth integration tests temporarily enable MFA for `dr.jovic@clinic.test`, use a test OTP hash, and restore the user to MFA-disabled state after the suite. They do not require a real SMS provider. With `SMS_PROVIDER=stub`, application login challenges print the OTP in the API terminal.
 
 The root `pnpm test` command runs `pnpm db:test:setup` first. The setup script creates `endokrina_test` through the PostgreSQL `postgres` maintenance database, applies the Drizzle schema, and seeds the test user/data. It never changes the development database configured by `.env`.
+
+CI creates `.env.test` from its Postgres service environment before running the same command. The local `.env.test` file is ignored because it contains database credentials.

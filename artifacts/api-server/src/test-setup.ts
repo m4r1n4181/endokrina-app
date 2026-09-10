@@ -1,4 +1,6 @@
 import { loadEnvFile } from "node:process";
+import { existsSync } from "node:fs";
 
-loadEnvFile("../../.env.test");
-loadEnvFile("../../.env");
+for (const envFile of ["../../.env.test", "../../.env"]) {
+	if (existsSync(envFile)) loadEnvFile(envFile);
+}
