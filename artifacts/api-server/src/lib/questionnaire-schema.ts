@@ -308,6 +308,13 @@ export const THYROID_QUESTIONNAIRE_V1: QuestionnaireSchema = {
   ],
 };
 
+export function getAllowedQuestionIds(schema: QuestionnaireSchema): Set<string> {
+  const ids = new Set<string>();
+  for (const section of schema.sections) {
+    for (const q of section.questions) ids.add(q.id);
+  }
+  return ids;
+}
 /**
  * Get a schema by version identifier.
  * Extend this map as new condition schemas are added.

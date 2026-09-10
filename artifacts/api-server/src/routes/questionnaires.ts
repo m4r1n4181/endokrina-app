@@ -22,7 +22,11 @@ import { clinicalContentGuard } from "../middlewares/rbac";
 import { writeAuditLog, linkAuditCtx, userAuditCtx } from "../services/audit";
 import { generateSummaries } from "../services/summary";
 import { extractClientIp } from "../middlewares/audit-middleware";
-import { getQuestionnaireSchema, THYROID_QUESTIONNAIRE_V1 } from "../lib/questionnaire-schema";
+import {
+  getAllowedQuestionIds,
+  getQuestionnaireSchema,
+  THYROID_QUESTIONNAIRE_V1,
+} from "../lib/questionnaire-schema";
 import { z } from "zod";
 
 const router = Router();
@@ -198,6 +202,20 @@ router.post("/:appointmentId/save", requirePatientAuth, async (req, res, next) =
       return;
     }
 
+    const parse = answersSchema.safeParse(req.body.answers);
+    if (!parse.success) {
+      res.status(400).json({ error: "Invalid answers format" });
+      return;
+    }
+
+    const allowedIds = getAllowedQuestionIds(THYROID_QUESTIONNAIRE_V1);
+    const answers = parse.data;
+    const unknownKeys = Object.keys(answers).filter((k) => !allowedIds.has(k));
+    if (unknownKeys.length > 0) {
+      res.status(400).json({ error: "Unknown questionnaire fields", code: "INVALID_FIELDS", fields: unknownKeys });
+      return;
+    }
+
     // Check lock state
     const [appointment] = await db
       .select({
@@ -223,12 +241,6 @@ router.post("/:appointmentId/save", requirePatientAuth, async (req, res, next) =
         error: "Questionnaire is locked. Contact the clinic to reopen.",
         code: "QUESTIONNAIRE_LOCKED",
       });
-      return;
-    }
-
-    const parse = answersSchema.safeParse(req.body.answers);
-    if (!parse.success) {
-      res.status(400).json({ error: "Invalid answers format" });
       return;
     }
 
@@ -328,6 +340,19 @@ router.post("/:appointmentId/submit", requirePatientAuth, async (req, res, next)
       return;
     }
 
+    const parse = answersSchema.safeParse(req.body.answers);
+    if (!parse.success) {
+      res.status(400).json({ error: "Invalid answers format" });
+      return;
+    }
+
+    const allowedIds = getAllowedQuestionIds(THYROID_QUESTIONNAIRE_V1);
+    const unknownKeys = Object.keys(parse.data).filter((k) => !allowedIds.has(k));
+    if (unknownKeys.length > 0) {
+      res.status(400).json({ error: "Unknown questionnaire fields", code: "INVALID_FIELDS", fields: unknownKeys });
+      return;
+    }
+
     const [appointment] = await db
       .select({ status: appointmentsTable.status, scheduledAt: appointmentsTable.scheduledAt })
       .from(appointmentsTable)
@@ -345,12 +370,6 @@ router.post("/:appointmentId/submit", requirePatientAuth, async (req, res, next)
 
     if (isLocked) {
       res.status(409).json({ error: "Questionnaire is locked", code: "QUESTIONNAIRE_LOCKED" });
-      return;
-    }
-
-    const parse = answersSchema.safeParse(req.body.answers);
-    if (!parse.success) {
-      res.status(400).json({ error: "Invalid answers format" });
       return;
     }
 
