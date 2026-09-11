@@ -41,6 +41,10 @@ testem.log
 .DS_Store
 Thumbs.db
 
+# LocalStack / Docker bind mounts
+volume/
+.tmp-docs/
+
 # Secrets — never commit
 .env
 .env.test

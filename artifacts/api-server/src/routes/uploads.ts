@@ -4,8 +4,7 @@
  * Access-restricted: patients upload their own; doctors view (in /doctor routes).
  * Every upload event is audit logged.
  *
- * Phase 1: upload metadata is recorded; actual file storage is stubbed.
- * Phase 2: wire to S3 with server-side encryption (SSE-S3 or SSE-KMS).
+ * Storage is selected by STORAGE_PROVIDER; stub is intended for local development.
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, uploadedDocumentsTable, appointmentsTable, AUDIT_ACTIONS } from "../lib/db";
@@ -13,10 +12,10 @@ import { eq } from "drizzle-orm";
 import { requirePatientAuth } from "../middlewares/authenticate";
 import { writeAuditLog, linkAuditCtx } from "../services/audit";
 import { extractClientIp } from "../middlewares/audit-middleware";
-import { config, } from "../lib/config";
+import { config } from "../lib/config";
 import { ALLOWED_UPLOAD_MIME_TYPES } from "@workspace/db";
 import crypto from "crypto";
-import { saveStubDocument } from "../lib/document-storage";
+import { saveDocument } from "../lib/document-storage";
 import { z } from "zod";
 import multer from "multer";
 
@@ -56,13 +55,7 @@ function uploadFile(req: Request, res: Response, next: NextFunction): void {
  * POST /api/uploads/:appointmentId
  * Patient uploads a lab/ultrasound document.
  *
- * Phase 1 implementation:
- *   - Validates file metadata
- *   - Generates a storage key (not yet written to S3)
- *   - Creates the DB record
- *   - Returns a presigned upload URL stub
- *
- * Phase 2: replace stub with real presigned S3 PUT URL.
+ * The API receives the file and writes it through the configured storage adapter.
  */
 router.post("/:appointmentId", requirePatientAuth, uploadFile, async (req, res, next) => {
   try {
@@ -136,7 +129,7 @@ router.post("/:appointmentId", requirePatientAuth, uploadFile, async (req, res, 
       });
 
     if (fileBytes) {
-      await saveStubDocument(storageKey, fileBytes);
+      await saveDocument(storageKey, fileBytes, mimeType);
     }
 
     // Persist lab status when provided (or default to uploaded_digitally when a file is added)
@@ -161,7 +154,7 @@ router.post("/:appointmentId", requirePatientAuth, uploadFile, async (req, res, 
       document: doc,
       // Phase 2: this will be a signed S3 PUT URL for the actual file upload
       uploadUrl: null,
-      _note: "File saved in stub storage.",
+      _note: config.STORAGE_PROVIDER === "s3" ? "File saved in S3 storage." : "File saved in stub storage.",
     });
   } catch (err) {
     next(err);

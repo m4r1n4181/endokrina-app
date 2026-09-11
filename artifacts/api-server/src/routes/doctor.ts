@@ -10,7 +10,7 @@ import { requireStaffAuth } from "../middlewares/authenticate";
 import { clinicalContentGuard } from "../middlewares/rbac";
 import { writeAuditLog, userAuditCtx } from "../services/audit";
 import { extractClientIp } from "../middlewares/audit-middleware";
-import { readStubDocument } from "../lib/document-storage";
+import { readDocument } from "../lib/document-storage";
 
 const router = Router();
 
@@ -152,7 +152,7 @@ router.get("/appointments/:id/documents/:docId/file", async (req, res, next) => 
       return;
     }
 
-    const fileBytes = await readStubDocument(doc.storageKey);
+    const fileBytes = await readDocument(doc.storageKey);
 
     await writeAuditLog({
       ctx: userAuditCtx(userId, req.user!.role, ip),

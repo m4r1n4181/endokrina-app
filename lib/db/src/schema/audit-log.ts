@@ -116,6 +116,8 @@ export const AUDIT_ACTIONS = {
   DATA_DELETION_REQUEST: "data.deletion_request",
   DATA_CORRECTION_REQUEST: "data.correction_request",
   DATA_EXPORT_REQUEST: "data.export_request",
+  REMINDER_SEND: "reminder.send",
+  MORNING_BRIEFING: "doctor.morning_briefing",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

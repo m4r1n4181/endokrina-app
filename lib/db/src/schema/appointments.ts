@@ -38,6 +38,7 @@ export const appointmentsTable = pgTable("appointments", {
   // Doctor-facing measurement fields (F-13)
   consultationDurationMinutes: text("consultation_duration_minutes"),
   doctorDocumentationEffort: text("doctor_documentation_effort"), // simple field for self-report
+  lastReminderSentAt: timestamp("last_reminder_sent_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   createdByUserId: uuid("created_by_user_id").references(() => usersTable.id),

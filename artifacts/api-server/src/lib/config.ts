@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 
-const configSchema = z.object({
+export const configSchema = z.object({
   // Server
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().default(5000),
@@ -41,6 +41,7 @@ const configSchema = z.object({
   AWS_REGION: z.string().default("eu-central-1"), // data residency config — never hardcoded
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  AWS_ENDPOINT_URL: z.string().url().optional(),
 
   // File storage — encrypted object storage
   // Storage provider: "s3" | "stub" (stub writes to local /tmp, dev only)
@@ -69,10 +70,16 @@ const configSchema = z.object({
   QUESTIONNAIRE_LOCK_OFFSET_MINUTES: z.coerce.number().default(0),
 
   // Retention config — company decides, not clinic (per compliance)
-  // These are defaults; override per deployment
   DOCUMENT_RETENTION_DAYS: z.coerce.number().default(365),
-  // Questionnaires are kept long-term (needed for returning-patient context)
-  // Audit logs: retained always (no config for deletion — by design)
+
+  // Background jobs (auto-lock, reminders, morning doctor email)
+  JOBS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  JOBS_INTERVAL_SECONDS: z.coerce.number().default(60),
+  REMINDER_HOURS_BEFORE: z.coerce.number().default(24),
+  APP_TIMEZONE: z.string().default("Europe/Belgrade"),
 
   // CORS
   CORS_ORIGINS: z.string().default("*"),
@@ -82,14 +89,25 @@ const configSchema = z.object({
   // Patient/staff portal URL — magic links must open the frontend, not the API
   PORTAL_BASE_URL: z.string().default("http://localhost:5173"),
 })
-
 .refine(
   (cfg) => !(cfg.NODE_ENV === "production" && cfg.CORS_ORIGINS === "*"),
   { message: "CORS_ORIGINS cannot be '*' in production", path: ["CORS_ORIGINS"] }
+)
+.refine(
+  (cfg) => cfg.STORAGE_PROVIDER !== "s3" || Boolean(cfg.STORAGE_BUCKET),
+  { message: "STORAGE_BUCKET is required when STORAGE_PROVIDER=s3", path: ["STORAGE_BUCKET"] }
+)
+.refine(
+  (cfg) => !(cfg.NODE_ENV === "production" && cfg.STORAGE_PROVIDER === "stub"),
+  { message: "STORAGE_PROVIDER=stub is not allowed in production", path: ["STORAGE_PROVIDER"] }
 );
 
 function loadConfig() {
-  const result = configSchema.safeParse(process.env);
+  const env = { ...process.env };
+  if (env.NODE_ENV === "test" && env.JOBS_ENABLED === undefined) {
+    env.JOBS_ENABLED = "false";
+  }
+  const result = configSchema.safeParse(env);
   if (!result.success) {
     const errors = result.error.issues
       .map((i: { path: (string | number)[]; message: string }) => `  ${i.path.join(".")}: ${i.message}`)

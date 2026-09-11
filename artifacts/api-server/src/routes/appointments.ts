@@ -32,12 +32,11 @@ const createAppointmentSchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   doctorId: z.string().uuid(),
   appointmentType: z.string().min(1),
-  scheduledAt: z.string().min(1),
+  scheduledAt: z.string().datetime({ offset: true }),
 });
 
 // POST /api/appointments — create invitation (admin/nurse only)
 router.post("/", adminOnly, async (req, res, next) => {
-  console.log("CT:", req.headers["content-type"], "BODY:", req.body);
   try {
     const parse = createAppointmentSchema.safeParse(req.body);
     if (!parse.success) {

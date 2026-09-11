@@ -27,6 +27,7 @@ export const usersTable = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  lastMorningBriefingOn: text("last_morning_briefing_on"), // YYYY-MM-DD in APP_TIMEZONE
 });
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({

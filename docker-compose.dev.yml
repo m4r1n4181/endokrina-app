@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: endokrina
+    ports: ["5432:5432"]
+    volumes: ["pg-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d endokrina"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    container_name: localstack-main
+    image: localstack/localstack:4.4
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      SERVICES: s3
+      DEBUG: ${DEBUG:-0}
+      PERSISTENCE: ${PERSISTENCE:-0}
+      AWS_DEFAULT_REGION: eu-central-1
+      # Bucket is created by the init hook inside the container (awslocal exists there, not on Windows).
+      LOCALSTACK_INIT_SKIP_MOD_SCAN: 1
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./localstack/init:/etc/localstack/init
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pg-data:
+  localstack-data:
