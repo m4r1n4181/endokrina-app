@@ -4,11 +4,11 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: endokrina
-    ports: ["5432:5432"]
+      POSTGRES_DB: thyroid_dev
+    ports: ["5433:5432"]
     volumes: ["pg-data:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d endokrina"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d thyroid_dev"]
       interval: 5s
       timeout: 5s
       retries: 10
