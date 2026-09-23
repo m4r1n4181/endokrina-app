@@ -1,351 +1,284 @@
-# Local Development Setup — Windows + VS Code
+# Local Development Setup - Windows + VS Code
 
-Step-by-step guide to run the DEV-001 Thyroid Pre-Visit Platform on Windows.  
-Estimated total time: **30–40 minutes** (mostly downloads).
+This guide describes a clean setup after cloning the repository. It uses Docker for PostgreSQL and LocalStack S3, and uses committed Drizzle migrations instead of `db:push`.
 
----
+## 1. Install prerequisites
 
-## 1. What to download and install
+Install Git for Windows, Node.js LTS, Docker Desktop, and VS Code:
 
-Install these in order. Each item below links to the official download page.
+- Git: https://git-scm.com/downloads/win
+- Node.js: https://nodejs.org
+- Docker Desktop: https://www.docker.com/products/docker-desktop/
+- VS Code: https://code.visualstudio.com/
 
-### 1a. Git for Windows
-**Why:** Provides the `sh` shell the project's package manager setup requires. Also gives you Git.
+Open a new PowerShell or Git Bash terminal and verify:
 
-1. Go to **https://git-scm.com/downloads/win**
-2. Download the 64-bit installer and run it
-3. During setup accept all defaults — no changes needed
-4. ✅ Verify: open **Start → Git Bash**, type `git --version` → should print a version number
-
----
-
-### 1b. Node.js v22 or v24 (LTS)
-**Why:** Runtime for the API server.
-
-1. Go to **https://nodejs.org** → click **"LTS"** to download the Windows installer (`.msi`)
-2. Run the installer, accept defaults
-3. On the **"Tools for Native Modules"** screen — **check the box** "Automatically install the necessary tools"  
-   (This installs Python 3 and the Visual Studio C++ build tools that `argon2` password hashing requires — it runs in a separate PowerShell window after Node.js installs, takes ~5 min)
-4. ✅ Verify: open a **new PowerShell window**, type:
-   ```
-   node --version
-   npm --version
-   ```
-   Both should print version numbers.
-
-> **If you skipped the "Tools for Native Modules" step:** You can install them later by running this in an **Administrator PowerShell**:
-> ```powershell
-> npm install -g windows-build-tools
-> ```
-
----
-
-### 1c. pnpm
-**Why:** The project uses pnpm workspaces; npm will not work.
-
-In any terminal (PowerShell or Git Bash), run:
 ```powershell
-npm install -g pnpm
+git --version
+node --version
+npm --version
+docker --version
+docker compose version
 ```
 
-✅ Verify:
+The project uses native `argon2`. If `pnpm install` reports native build errors on Windows, install the Visual Studio C++ Build Tools and Python, then retry.
+
+Install pnpm once:
+
 ```powershell
+npm install -g pnpm
 pnpm --version
 ```
 
----
+## 2. Clone the repository
 
-### 1d. PostgreSQL 16 or 17
-**Why:** The database.
-
-1. Go to **https://www.enterprisedb.com/downloads/postgres-postgresql-downloads**
-2. Download **Windows x86-64**, PostgreSQL 16 or 17
-3. Run the installer:
-   - Installation directory: leave as default
-   - **Password for the `postgres` superuser:** choose something you will remember (e.g. `postgres123`) — you will need this in Step 4
-   - Port: **5432** (default)
-   - Locale: leave as default
-   - Uncheck **Stack Builder** on the last screen (not needed)
-4. ✅ Verify: open **Start → pgAdmin 4** — if it opens, PostgreSQL is running
-
----
-
-### 1e. Visual Studio Code
-1. Go to **https://code.visualstudio.com**
-2. Download and install the Windows version
-3. Recommended extensions (install from VS Code's Extensions panel):
-   - **ESLint** (`dbaeumer.vscode-eslint`)
-   - **Prettier** (`esbenp.prettier-vscode`)
-   - **REST Client** (`humao.rest-client`) — lets you call the API without Postman
-
----
-
-## 2. Get the project
-
-### If you received a ZIP file:
-1. Right-click the ZIP → **Extract All** → choose a folder (e.g. `C:\Projects\thyroid-platform`)
-2. Open VS Code → **File → Open Folder** → select that folder
-
-### If you are cloning from Git:
-Open Git Bash and run:
-```bash
-git clone <repository-url> C:/Projects/thyroid-platform
-```
-Then open VS Code → **File → Open Folder** → `C:\Projects\thyroid-platform`
-
----
-
-## 3. Open the terminal in VS Code
-
-**Terminal → New Terminal** (or `` Ctrl+` ``)
-
-In the dropdown next to the `+` button, choose **Git Bash** (not PowerShell or cmd).  
-All commands in this guide should be run in that Git Bash terminal.
-
-> **Why Git Bash?** The project has a setup script that requires `sh`. PowerShell does not provide it; Git Bash does. Once setup is done, you can use any terminal.
-
----
-
-## 4. Set up the database
-
-### 4a. Create the database
-
-In VS Code's Git Bash terminal, run:
-```bash
-psql -U postgres -c "CREATE DATABASE thyroid_dev;"
+```powershell
+git clone <repository-url> C:\Projects\endokrina-app
+cd C:\Projects\endokrina-app
+code .
 ```
 
-When prompted for a password, enter the one you chose during PostgreSQL installation.
+## 3. Install dependencies
 
-✅ You should see: `CREATE DATABASE`
+From the repository root:
 
-### 4b. (Optional) Create a dedicated user instead of using postgres
-
-```bash
-psql -U postgres -c "CREATE USER thyroid_user WITH PASSWORD 'thyroid_pass';"
-psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE thyroid_dev TO thyroid_user;"
+```powershell
+pnpm install --frozen-lockfile
 ```
 
----
+Do not use npm or yarn for this workspace. The committed `pnpm-lock.yaml` is the source of truth.
 
-## 5. Set environment variables (.env file)
+## 4. Create the local environment file
 
-In VS Code's Git Bash terminal, from the project root folder:
-
-```bash
-cp .env.example .env
+```powershell
+Copy-Item .env.example .env
 ```
 
-Then open `.env` in VS Code and fill in the following values:
+Open `.env` and set these local values:
 
-```
-# Required — fill in your Postgres details:
-DATABASE_URL=postgresql://postgres:postgres123@localhost:5432/thyroid_dev
-
-# Required — generate two random secrets (run the commands below):
-JWT_SECRET=REPLACE_ME
-MAGIC_LINK_SECRET=REPLACE_ME
-
-# These are already set correctly for local development:
+```dotenv
 NODE_ENV=development
 PORT=5000
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/endokrina
+
+JWT_SECRET=REPLACE_WITH_A_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS
+MAGIC_LINK_SECRET=REPLACE_WITH_ANOTHER_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS
+
 SMS_PROVIDER=stub
-STORAGE_PROVIDER=stub
 EMAIL_PROVIDER=stub
+STORAGE_PROVIDER=s3
+STORAGE_BUCKET=endokrina-documents
+AWS_REGION=eu-central-1
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
+AWS_ENDPOINT_URL=http://localhost:4566
+
 APP_BASE_URL=http://localhost:5000
 PORTAL_BASE_URL=http://localhost:5173
+CORS_ORIGINS=*
 ```
 
-### Generating the two required secrets
+Generate secrets instead of using the placeholders. Run this twice:
 
-Run these two commands in the Git Bash terminal — each prints a long random hex string. Copy each one into `.env`:
-
-```bash
+```powershell
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
-Run it once → copy the output → paste as `JWT_SECRET=<output>`  
-Run it again → copy the output → paste as `MAGIC_LINK_SECRET=<output>`
 
-Your final `.env` `JWT_SECRET` line should look like:
-```
-JWT_SECRET=a3f8c2...long hex string...
-```
+Use the two outputs for `JWT_SECRET` and `MAGIC_LINK_SECRET`. Never commit `.env`; it is ignored by Git. `.env.test` is also ignored and is reserved for the isolated test database.
 
-> **Never commit `.env` to Git.** It is already in `.gitignore`.
+## 5. Start local infrastructure
 
----
+Make sure Docker Desktop is running. From the repository root:
 
-## 6. Install dependencies
-
-In the Git Bash terminal, from the project root:
-
-```bash
-pnpm install
+```powershell
+pnpm run dev:infra
 ```
 
-This downloads all packages and compiles the `argon2` native binary.  
-First run takes **2–4 minutes**. You will see a progress bar.
+This starts:
 
-✅ Expect to see something like:
-```
-Done in 45s using pnpm v10.x.x
-```
+- PostgreSQL service `postgres` on `localhost:5432`
+- Database `endokrina`
+- User/password `postgres` / `postgres`
+- LocalStack S3 on `http://localhost:4566`
 
-If you see errors about `node-gyp` or `argon2 build failed`:
-- Make sure you installed the Build Tools in Step 1b
-- Run this in **Administrator PowerShell**, then retry `pnpm install`:
-  ```powershell
-  npm install -g node-gyp
-  npm install -g windows-build-tools
-  ```
+Check the services:
 
----
-
-## 7. Push the database schema
-
-This creates all tables in your `thyroid_dev` database:
-
-```bash
-pnpm --filter @workspace/db run push
+```powershell
+docker compose -f docker-compose.dev.yml ps
 ```
 
-✅ Expect:
-```
-[✓] Pulling schema from database...
-[✓] Changes applied
-```
+PostgreSQL should be healthy before continuing. If another PostgreSQL installation already occupies port `5432`, stop it or change the Compose port and `DATABASE_URL` together.
 
----
+## 6. Apply versioned database migrations
 
-## 8. Seed test data
+The committed migration files are in `lib/db/drizzle/`. Apply them to the local `endokrina` database:
 
-This creates two staff accounts, one test patient, one appointment, and one patient preparation link:
-
-```bash
-pnpm --filter @workspace/db run seed
+```powershell
+pnpm run db:migrate
 ```
 
-✅ You will see a summary printed — **copy it or leave the terminal open**, you will need the credentials in Step 10.
+This is the normal local setup path and the migration workflow intended for future production/RDS deployments. Do not use `db:push` for the normal workflow.
 
-Example output:
-```
- ADMIN LOGIN
-   Email:     admin@clinic.test
-   Password:  Admin1234!admin
+On a new database, the command applies `0000_loose_bedlam.sql`. Running it again should report no pending migrations.
 
- DOCTOR LOGIN
-   Email:     dr.jovic@clinic.test
-   Password:  Doctor1234!doc
+Optional verification:
 
- PATIENT FLOW
-   Magic link: http://localhost:5000/prepare/Qss7zA...
-   DOB:        1985-03-15
-   OTP:        printed in the SERVER CONSOLE when you submit DOB
+```powershell
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U postgres -d endokrina -c "\dt public.*"
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U postgres -d endokrina -c "select * from __drizzle_migrations;"
 ```
 
-Safe to run again — the script skips records that already exist.
+## 7. Create the LocalStack S3 bucket
 
----
+The repository includes a Windows-friendly bucket setup script; `awslocal` is not required:
 
-## 9. Start the API server
-
-```bash
-pnpm --filter @workspace/api-server run dev
+```powershell
+pnpm run storage:ensure-bucket
 ```
 
-Wait for:
-```
-INFO: Server listening
-    port: 5000
-```
+Expected output is either `Created bucket` or `Bucket already exists`.
 
-Leave this terminal open.
+## 8. Seed local demo data
 
----
-
-## 9b. Start the clinic portal (UI)
-
-Open a **second** Git Bash terminal and run:
-
-```bash
-pnpm --filter @workspace/clinic-portal run dev
+```powershell
+pnpm run db:seed
 ```
 
-The UI runs at **http://localhost:5173** and proxies `/api` to the API on port 5000.
+The seed creates or reuses:
 
-Magic links from seed / admin console point to the portal (`PORTAL_BASE_URL`), not the API.
+- Admin: `admin@clinic.test` / `Admin1234!admin`
+- Doctor: `dr.jovic@clinic.test` / `Doctor1234!doc`
+- A test patient, appointment, and preparation link
 
----
+The seed prints the patient magic link. Keep it available for the patient-flow check.
 
-## 10. Verify the app is working
+## 9. Start the API and portal
 
-### 10a. Health check
-```bash
-curl http://localhost:5000/api/healthz
-```
-✅ Expected: `{"status":"ok"}`
+Open two terminals in the repository root.
 
-### 10b. Staff login (browser)
-1. Open http://localhost:5173/login
-2. Admin: `admin@clinic.test` / `Admin1234!admin`
-3. Doctor: `dr.jovic@clinic.test` / `Doctor1234!doc`
+Terminal 1:
 
-### 10c. Patient flow (browser)
-1. Copy the magic link printed by the seed script (or create a new invitation as admin)
-2. Open it in the browser (DOB: `1985-03-15` for the seed patient)
-3. Read the 6-digit OTP from the **API server terminal** (SMS stub)
-4. Complete consent → questionnaire → lab status/documents → done
-
-### 10d. API smoke (optional)
-```bash
-curl -s -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@clinic.test","password":"Admin1234!admin"}'
+```powershell
+pnpm run dev:api
 ```
 
-Patient DOB verification returns `{"otpSent":true,"phone":"..."}` (not a sessionId). OTP verify uses `{token, otp}`.
+The API runs on `http://localhost:5000`.
 
----
+Terminal 2:
+
+```powershell
+pnpm run dev:portal
+```
+
+The portal runs on `http://localhost:5173`.
+
+## 10. Verify the installation
+
+API health check:
+
+```powershell
+Invoke-WebRequest http://localhost:5000/api/healthz -UseBasicParsing
+```
+
+Open `http://localhost:5173/login` and use the seeded admin or doctor credentials. Staff MFA is opt-in; after enabling it in the security page, the development SMS code is printed in the API terminal because `SMS_PROVIDER=stub`.
+
+Patient flow:
+
+1. Open the magic link printed by `pnpm run db:seed`.
+2. Use DOB `1985-03-15` for the seeded patient.
+3. Read the SMS OTP from the API terminal.
+4. Complete consent, questionnaire, lab status, and document upload.
+
+## 11. Run checks and tests
+
+```powershell
+pnpm run typecheck
+pnpm run build
+pnpm test
+```
+
+`pnpm test` creates or reuses the separate `endokrina_test` database, applies the schema, seeds it, and runs API tests. It does not use or reset the local `endokrina` database.
+
+## 12. Stop local services
+
+Stop containers but keep database data:
+
+```powershell
+pnpm run dev:infra:down
+```
+
+To remove containers and local volumes, which deletes PostgreSQL and LocalStack data, use this only when you intentionally want a full reset:
+
+```powershell
+docker compose -f docker-compose.dev.yml down -v
+```
 
 ## Quick reference
 
 | Task | Command |
 |---|---|
-| Install dependencies | `pnpm install` |
-| Push schema | `pnpm --filter @workspace/db run push` |
-| Seed test data | `pnpm --filter @workspace/db run seed` |
-| Start API | `pnpm --filter @workspace/api-server run dev` |
-| Start UI | `pnpm --filter @workspace/clinic-portal run dev` |
+| Install dependencies | `pnpm install --frozen-lockfile` |
+| Start Docker services | `pnpm run dev:infra` |
+| Stop Docker services | `pnpm run dev:infra:down` |
+| Apply DB migrations | `pnpm run db:migrate` |
+| Create LocalStack bucket | `pnpm run storage:ensure-bucket` |
+| Seed demo data | `pnpm run db:seed` |
+| Start API | `pnpm run dev:api` |
+| Start portal | `pnpm run dev:portal` |
 | Type-check | `pnpm run typecheck` |
-| Health | http://localhost:5000/api/healthz |
-| Portal | http://localhost:5173 |
-
-In `.env` set:
-- `APP_BASE_URL=http://localhost:5000`
-- `PORTAL_BASE_URL=http://localhost:5173`
-- `SMS_PROVIDER=stub`
-
----
+| Build | `pnpm run build` |
+| Run isolated tests | `pnpm test` |
+| API health | `http://localhost:5000/api/healthz` |
+| Portal | `http://localhost:5173` |
 
 ## Troubleshooting
 
-**`sh: command not found` or preinstall fails**  
-→ Use Git Bash, not PowerShell/cmd.
+### `ECONNREFUSED localhost:5432`
 
-**`argon2` build errors / node-gyp fails**  
-→ Install Build Tools (Step 1b), then retry `pnpm install`.
+Check Docker Desktop and PostgreSQL logs:
 
-**`Cannot connect to database` / `ECONNREFUSED`**  
-→ Start PostgreSQL service; check `DATABASE_URL` password/db name.
+```powershell
+docker compose -f docker-compose.dev.yml ps
+docker compose -f docker-compose.dev.yml logs postgres
+```
 
-**`Configuration error: JWT_SECRET: Required`**  
-→ Ensure `.env` exists in the project root with secrets filled in.
+### `DATABASE_URL` points to the wrong database
 
-**Portal loads but API calls fail**  
-→ API must be running on 5000; Vite proxies `/api` automatically.
+The Compose database is `endokrina`:
 
-**OTP not in server terminal**  
-→ Confirm `SMS_PROVIDER=stub`. Check DOB response for errors first.
+```dotenv
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/endokrina
+```
 
-**`pnpm` is not recognized**  
-→ Reopen terminal; ensure `%APPDATA%\npm` is on PATH.
+The test database is `endokrina_test` and is configured separately by `.env.test`/CI.
+
+### Migration appears to stop after `Using 'pg' driver`
+
+Run from the repository root:
+
+```powershell
+pnpm run db:migrate
+```
+
+Then check PostgreSQL health and logs. Do not run destructive database commands unless you intend to delete local data.
+
+### `Configuration error: JWT_SECRET` or `MAGIC_LINK_SECRET`
+
+Make sure `.env` exists and both secrets have at least 32 characters.
+
+### `argon2` install failure
+
+Install the Windows C++ Build Tools and Python, then run:
+
+```powershell
+pnpm install --frozen-lockfile
+```
+
+### LocalStack or S3 errors
+
+```powershell
+docker compose -f docker-compose.dev.yml logs localstack
+pnpm run storage:ensure-bucket
+```
+
+With `STORAGE_PROVIDER=stub`, uploads use local temporary storage instead of S3.

@@ -15,7 +15,8 @@
     "db:push": "pnpm --filter @workspace/db run push",
     "db:test:setup": "pnpm --filter @workspace/scripts run setup-test-db",
     "test": "pnpm run db:test:setup && pnpm --filter @workspace/api-server test",
-    "db:seed": "pnpm --filter @workspace/db run seed"
+    "db:seed": "pnpm --filter @workspace/db run seed",
+    "db:migrate": "pnpm --filter @workspace/db drizzle-kit migrate"
   },
   "private": true,
   "dependencies": {
