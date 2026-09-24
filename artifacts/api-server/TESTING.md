@@ -24,6 +24,8 @@ pnpm --filter @workspace/api-server exec vitest run src/routes/__tests__/auth.te
 - Enabling MFA without a phone returns `400 MFA_PHONE_REQUIRED`.
 - Questionnaire IDs are collected from all schema sections.
 - Expired and tampered patient preparation links are rejected.
+- Doctor morning briefing (`src/jobs/__tests__/morning-briefing.test.ts`, real test DB, only email delivery mocked): one mail per doctor per day, only that doctor's non-cancelled patients of the clinic-local day in time order, no mail on days without appointments or for inactive doctors, no duplicates when job runs overlap, slot released and retried after a delivery failure, sends only inside the configured window.
+- Briefing email content (no clinical data, HTML escaping, local times, Serbian status labels) and clinic-day boundaries across DST changes.
 
 The appointment POST route also validates `scheduledAt` as an ISO datetime with an explicit timezone offset. Uploads enforce the configured size limit and allowed MIME metadata before storage.
 

@@ -80,6 +80,11 @@ export const configSchema = z.object({
   JOBS_INTERVAL_SECONDS: z.coerce.number().default(60),
   REMINDER_HOURS_BEFORE: z.coerce.number().default(24),
   APP_TIMEZONE: z.string().default("Europe/Belgrade"),
+  // Doctor morning briefing: sent once per doctor per day, on days with appointments.
+  // Sent at the first job tick at/after MORNING_BRIEFING_HOUR (clinic-local time). If the server
+  // was down at that moment, it still catches up until MORNING_BRIEFING_HOUR + CATCHUP_HOURS.
+  MORNING_BRIEFING_HOUR: z.coerce.number().int().min(0).max(23).default(7),
+  MORNING_BRIEFING_CATCHUP_HOURS: z.coerce.number().int().min(1).max(24).default(5),
 
   // CORS
   CORS_ORIGINS: z.string().default("*"),
@@ -100,6 +105,28 @@ export const configSchema = z.object({
 .refine(
   (cfg) => !(cfg.NODE_ENV === "production" && cfg.STORAGE_PROVIDER === "stub"),
   { message: "STORAGE_PROVIDER=stub is not allowed in production", path: ["STORAGE_PROVIDER"] }
+)
+.refine(
+  (cfg) => cfg.EMAIL_PROVIDER !== "smtp" || Boolean(cfg.SMTP_HOST && cfg.SMTP_PORT),
+  { message: "SMTP_HOST and SMTP_PORT are required when EMAIL_PROVIDER=smtp", path: ["SMTP_HOST"] }
+)
+.refine(
+  (cfg) => cfg.EMAIL_PROVIDER !== "ses",
+  {
+    message: "EMAIL_PROVIDER=ses is not implemented yet; use smtp (Amazon SES exposes an SMTP interface)",
+    path: ["EMAIL_PROVIDER"],
+  }
+)
+.refine(
+  (cfg) => {
+    try {
+      new Intl.DateTimeFormat("en-GB", { timeZone: cfg.APP_TIMEZONE });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: "APP_TIMEZONE must be a valid IANA timezone, e.g. Europe/Belgrade", path: ["APP_TIMEZONE"] }
 );
 
 function loadConfig() {
