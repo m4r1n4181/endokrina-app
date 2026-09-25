@@ -16,7 +16,7 @@ export const uploadedDocumentsTable = pgTable("uploaded_documents", {
   appointmentId: uuid("appointment_id").notNull().references(() => appointmentsTable.id),
   // File metadata
   originalFileName: text("original_filename").notNull(),
-  mimeType: text("mime_type").notNull(),
+  detectedMime: text("mime_type").notNull(),
   fileSizeBytes: integer("file_size_bytes").notNull(),
   // Encrypted object storage key (S3-style, server-side encrypted)
   // Never expose this key directly — it is an internal reference only
