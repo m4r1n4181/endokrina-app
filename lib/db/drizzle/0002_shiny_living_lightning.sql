@@ -1,0 +1,1 @@
+ALTER TABLE "patients" DROP COLUMN "height_cm";

@@ -59,7 +59,7 @@ export default function PrepareLanding() {
     verifyMutation.mutate({ data: { token: token || '', dateOfBirth: values.dateOfBirth } }, {
       onSuccess: (res) => {
         if (res.otpSent) {
-          if (res.phone) sessionStorage.setItem('patient_masked_phone', res.phone);
+          if (res.email) sessionStorage.setItem('patient_masked_email', res.email);
           setLocation(`/prepare/${token}/otp`);
         } else {
           toast({ title: 'Greška', description: 'Nije moguće poslati kod. Pokušajte ponovo.', variant: 'destructive' });

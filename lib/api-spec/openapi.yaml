@@ -134,7 +134,7 @@ paths:
               $ref: "#/components/schemas/DobVerification"
       responses:
         "200":
-          description: DOB matched — OTP sent to patient phone
+          description: DOB matched — OTP sent to patient email
           content:
             application/json:
               schema:
@@ -815,9 +815,9 @@ components:
       properties:
         otpSent:
           type: boolean
-        phone:
+        email:
           type: ["string", "null"]
-          description: Masked phone number
+          description: Masked email address
         sessionId:
           type: ["string", "null"]
 
@@ -1000,8 +1000,6 @@ components:
         dateOfBirth:
           type: string
         sex:
-          type: ["string", "null"]
-        heightCm:
           type: ["string", "null"]
         matchStatus:
           type: string

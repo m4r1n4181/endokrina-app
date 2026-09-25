@@ -30,8 +30,8 @@ export const configSchema = z.object({
   OTP_BLOCK_MINUTES: z.coerce.number().default(30),
   OTP_EXPIRES_MINUTES: z.coerce.number().default(10),
 
-  // SMS OTP provider (interface only for MVP — provider pluggable via config)
-  // Valid values: "twilio" | "aws_sns" | "stub" (stub = log to console, dev/test only)
+  // SMS provider reserved for non-MFA notifications and later SMS MFA support.
+  // SMS MFA is not used during MVP.
   SMS_PROVIDER: z.enum(["twilio", "aws_sns", "stub"]).default("stub"),
   SMS_FROM_NUMBER: z.string().optional(),
   // Twilio (optional — only required if SMS_PROVIDER=twilio)
@@ -116,6 +116,10 @@ export const configSchema = z.object({
     message: "EMAIL_PROVIDER=ses is not implemented yet; use smtp (Amazon SES exposes an SMTP interface)",
     path: ["EMAIL_PROVIDER"],
   }
+)
+.refine(
+  (cfg) => !(cfg.NODE_ENV === "production" && cfg.EMAIL_PROVIDER === "stub"),
+  { message: "EMAIL_PROVIDER=stub is not allowed in production", path: ["EMAIL_PROVIDER"] }
 )
 .refine(
   (cfg) => {

@@ -8,7 +8,7 @@ import { usePatientAuth } from '@/hooks/use-patient-auth';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { Smartphone } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const otpSchema = z.object({
@@ -21,7 +21,7 @@ export default function PrepareOtp() {
   const { toast } = useToast();
   const { login } = usePatientAuth();
   const verifyMutation = useVerifyOtp();
-  const maskedPhone = sessionStorage.getItem('patient_masked_phone');
+  const maskedEmail = sessionStorage.getItem('patient_masked_email');
 
   const form = useForm<z.infer<typeof otpSchema>>({
     resolver: zodResolver(otpSchema),
@@ -44,12 +44,12 @@ export default function PrepareOtp() {
     <div className="min-h-screen bg-patient-portal-gradient flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 p-8 text-center">
         <div className="mx-auto w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6">
-          <Smartphone size={32} />
+          <Mail size={32} />
         </div>
         
-        <h1 className="text-2xl font-serif text-[#185e46] mb-4">Potvrdite broj telefona</h1>
+        <h1 className="text-2xl font-serif text-[#185e46] mb-4">Potvrdite email adresu</h1>
         <p className="text-gray-600 mb-8">
-          Poslali smo SMS sa 6-cifrenim kodom{maskedPhone ? ` na ${maskedPhone}` : ' na vaš broj telefona'}. Unesite kod ispod.
+          Poslali smo email sa 6-cifrenim kodom{maskedEmail ? ` na ${maskedEmail}` : ' na vašu email adresu'}. Unesite kod ispod.
         </p>
 
         <Form {...form}>

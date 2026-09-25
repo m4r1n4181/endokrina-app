@@ -8,10 +8,9 @@ import { eq } from "drizzle-orm";
 import { signStaffToken, signRefreshToken, verifyRefreshToken } from "../services/auth";
 import { writeAuditLog, unauthAuditCtx, userAuditCtx } from "../services/audit";
 import { requireStaffAuth } from "../middlewares/authenticate";
-import { logger } from "../lib/logger";
 import { extractClientIp } from "../middlewares/audit-middleware";
 import { generateOtpCode, hashOtp, verifyOtp, blockUntil } from "../services/patient-auth";
-import { sendSmsOtp } from "../services/sms";
+import { sendVerificationCodeEmail } from "../services/notifications";
 import { config } from "../lib/config";
 import argon2 from "argon2";
 import { z } from "zod";
@@ -26,7 +25,6 @@ const loginSchema = z.object({
 });
 const mfaSettingsSchema = z.object({
   enabled: z.boolean(),
-  phone: z.string().trim().min(6).optional(),
 });
 
 const loginLimiter = rateLimit({
@@ -83,10 +81,6 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     if (user.mfaEnabled) {
       const { mfaToken } = parse.data;
       if (!mfaToken) {
-        if (!user.phone) {
-          res.status(401).json({ error: "MFA phone number is not configured", code: "MFA_NOT_CONFIGURED" });
-          return;
-        }
         const otpCode = generateOtpCode();
         await db.update(usersTable).set({
           mfaOtpHash: hashOtp(otpCode),
@@ -94,7 +88,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
           mfaOtpAttemptCount: 0,
           mfaOtpBlockedUntil: null,
         }).where(eq(usersTable.id, user.id));
-        await sendSmsOtp(user.phone, otpCode);
+        await sendVerificationCodeEmail(user.email, otpCode, "staff_login");
         res.status(401).json({ error: "MFA token required", code: "MFA_REQUIRED" });
         return;
       }
@@ -165,19 +159,8 @@ router.patch("/me/mfa", requireStaffAuth, async (req, res, next) => {
       res.status(400).json({ error: "Invalid request" });
       return;
     }
-    const [user] = await db
-      .select({ phone: usersTable.phone })
-      .from(usersTable)
-      .where(eq(usersTable.id, req.user!.sub))
-      .limit(1);
-    const phone = parse.data.phone || user?.phone;
-    if (parse.data.enabled && !phone) {
-      res.status(400).json({ error: "Phone number is required for SMS MFA", code: "MFA_PHONE_REQUIRED" });
-      return;
-    }
     await db.update(usersTable).set({
       mfaEnabled: parse.data.enabled,
-      ...(parse.data.phone ? { phone: parse.data.phone } : {}),
       updatedAt: new Date(),
     }).where(eq(usersTable.id, req.user!.sub));
     res.json({ mfaEnabled: parse.data.enabled });

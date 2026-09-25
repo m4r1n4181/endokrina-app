@@ -16,6 +16,8 @@ import { generateLinkToken } from "../services/patient-auth";
 import { extractClientIp } from "../middlewares/audit-middleware";
 import { config } from "../lib/config";
 import { z } from "zod";
+import { sendEmail } from "../services/notifications";
+import { renderPatientInviteEmail } from "../services/patient-emails";
 
 const router = Router();
 
@@ -28,6 +30,7 @@ router.use(requireStaffAuth);
 
 const createAppointmentSchema = z.object({
   invitedFullName: z.string().min(1),
+  invitedEmail: z.string().email(),
   invitedPhone: z.string().min(6),
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   doctorId: z.string().uuid(),
@@ -79,11 +82,18 @@ router.post("/", adminOnly, async (req, res, next) => {
         .where(eq(patientsTable.id, existingPatient.id));
     }
 
+    if (existingPatient) {
+      await db.update(patientsTable)
+        .set({ email: data.invitedEmail, updatedAt: new Date() })
+        .where(eq(patientsTable.id, existingPatient.id));
+    }
+
     if (!existingPatient) {
       const [newPatient] = await db
         .insert(patientsTable)
         .values({
           fullName: data.invitedFullName,
+          email: data.invitedEmail,
           phone: data.invitedPhone,
           dateOfBirth: data.dateOfBirth,
           matchStatus: possibleDuplicate ? "possible_duplicate" : "new_patient",
@@ -149,6 +159,8 @@ router.post("/", adminOnly, async (req, res, next) => {
       targetId: link.id,
       outcome: "success",
     });
+    
+    
 
     // Update appointment status to link_sent
     await db
@@ -158,6 +170,17 @@ router.post("/", adminOnly, async (req, res, next) => {
 
     // TODO: dispatch message via configured channel (Viber/SMS/email)
     const linkUrl = `${config.PORTAL_BASE_URL}/prepare/${token}`;
+
+    const invite = renderPatientInviteEmail({
+      patientName: data.invitedFullName,
+      appointmentDate: new Date(data.scheduledAt),
+      clinicName: "Endokrina klinika",
+      link: linkUrl,
+      linkExpiresAt: new Date(data.scheduledAt),
+      timeZone: config.APP_TIMEZONE,
+    });
+
+    await sendEmail(data.invitedEmail, invite.subject, { text: invite.text, html: invite.html });
 
     res.status(201).json({
       appointment: { ...appointment, status: "link_sent" },
@@ -463,6 +486,25 @@ router.post("/:id/resend-link", adminOnly, async (req, res, next) => {
     const ip = extractClientIp(req);
     const userId = req.user!.sub;
 
+    // Get appointment and patient email
+    const [appointmentWithPatient] = await db
+      .select({
+        appointmentId: appointmentsTable.id,
+        patientId: appointmentsTable.patientId,
+        invitedFullName: appointmentsTable.invitedFullName,
+        scheduledAt: appointmentsTable.scheduledAt,
+        patientEmail: patientsTable.email,
+      })
+      .from(appointmentsTable)
+      .innerJoin(patientsTable, eq(appointmentsTable.patientId, patientsTable.id))
+      .where(eq(appointmentsTable.id, id))
+      .limit(1);
+
+    if (!appointmentWithPatient) {
+      res.status(404).json({ error: "Appointment not found", code: "NOT_FOUND" });
+      return;
+    }
+
     const [link] = await db
       .select()
       .from(preparationLinksTable)
@@ -474,8 +516,21 @@ router.post("/:id/resend-link", adminOnly, async (req, res, next) => {
       return;
     }
 
-    // TODO: dispatch message via configured channel
     const linkUrl = `${config.PORTAL_BASE_URL}/prepare/${link.token}`;
+
+    // Send email if patient has email
+    if (appointmentWithPatient.patientEmail) {
+      const invite = renderPatientInviteEmail({
+        patientName: appointmentWithPatient.invitedFullName,
+        appointmentDate: appointmentWithPatient.scheduledAt,
+        clinicName: "Endokrina klinika",
+        link: linkUrl,
+        linkExpiresAt: appointmentWithPatient.scheduledAt,
+        timeZone: config.APP_TIMEZONE,
+      });
+
+      await sendEmail(appointmentWithPatient.patientEmail, invite.subject, { text: invite.text, html: invite.html });
+    }
 
     await writeAuditLog({
       ctx: userAuditCtx(userId, req.user!.role, ip),

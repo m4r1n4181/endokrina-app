@@ -117,7 +117,7 @@ export default function PrepareQuestionnaire() {
   const sections = schema?.sections ?? [];
   const currentSection = sections[currentSectionIdx];
   const hasPrefilledProfile = Boolean(data?.prefill && Object.keys(data.prefill).length > 0);
-  const hasExistingProfile = ['full_name', 'date_of_birth', 'sex', 'height_cm'].some((key) => key in answers);
+  const hasExistingProfile = ['full_name', 'date_of_birth', 'sex'].some((key) => key in answers);
   const profileTitle = hasPrefilledProfile || hasExistingProfile
     ? 'Lični podaci (prefilirani — proverite tačnost)'
     : 'Lični podaci';
@@ -231,7 +231,7 @@ export default function PrepareQuestionnaire() {
         )}
 
         {(q.type === 'free_text' || q.type === 'date') && (
-          q.type === 'date' || ['full_name', 'height_cm'].includes(q.id) ? (
+          q.type === 'date' || q.id === 'full_name' ? (
             <Input
               type={q.type === 'date' ? 'date' : 'text'}
               value={(val as string) || ''}

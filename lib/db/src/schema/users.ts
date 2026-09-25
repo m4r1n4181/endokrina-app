@@ -16,7 +16,7 @@ export const usersTable = pgTable("users", {
   role: userRoleEnum("role").notNull(),
   fullName: text("full_name").notNull(),
   phone: text("phone"),
-  // SMS MFA is opt-in during the development phase.
+  // Email MFA is opt-in during the MVP phase.
   mfaEnabled: boolean("mfa_enabled").notNull().default(false),
   mfaSecret: text("mfa_secret"), // TOTP secret (encrypted at application layer)
   mfaOtpHash: text("mfa_otp_hash"),

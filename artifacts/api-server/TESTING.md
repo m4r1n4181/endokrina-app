@@ -18,9 +18,9 @@ pnpm --filter @workspace/api-server exec vitest run src/routes/__tests__/auth.te
 
 ## Covered behavior
 
-- Staff SMS MFA requires a challenge before issuing a staff token.
+- Staff email MFA requires a challenge before issuing a staff token.
 - Invalid MFA codes return `401 INVALID_MFA`.
-- A valid SMS MFA code is accepted once and then cleared.
+- A valid email MFA code is accepted once and then cleared.
 - Enabling MFA without a phone returns `400 MFA_PHONE_REQUIRED`.
 - Questionnaire IDs are collected from all schema sections.
 - Expired and tampered patient preparation links are rejected.

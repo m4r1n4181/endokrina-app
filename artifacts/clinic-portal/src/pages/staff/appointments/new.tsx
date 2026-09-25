@@ -19,6 +19,7 @@ import { copyTextToClipboard } from '@/lib/clipboard';
 
 const formSchema = z.object({
   invitedFullName: z.string().min(2, 'Ime mora imati najmanje 2 karaktera'),
+  invitedEmail: z.string().email('Unesite validnu email adresu'),
   invitedPhone: z.string().min(5, 'Unesite validan telefon'),
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format: GGGG-MM-DD'),
   doctorId: z.string().min(1, 'Izaberite doktora'),
@@ -45,6 +46,7 @@ export default function NewAppointment() {
     defaultValues: {
       invitedFullName: '',
       invitedPhone: '',
+      invitedEmail: '',
       dateOfBirth: '',
       doctorId: '',
       appointmentType: 'follow_up',
@@ -139,7 +141,7 @@ export default function NewAppointment() {
           <CardHeader>
             <CardTitle>Pozovi pacijenta</CardTitle>
             <CardDescription>
-              Unesite ime, telefon, datum rođenja, tip i vreme pregleda. Sistem generiše siguran link za pripremu.
+              Unesite ime, email, telefon, datum rođenja, tip i vreme pregleda. Sistem generiše siguran link za pripremu i šalje ga pacijentu na email.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -167,6 +169,21 @@ export default function NewAppointment() {
                         <FormLabel>Datum rođenja (GGGG-MM-DD)</FormLabel>
                         <FormControl>
                           <Input placeholder="1980-05-15" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <FormField
+                    control={form.control}
+                    name="invitedEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email pacijenta</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="petar.petrovic@example.com" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

@@ -16,19 +16,19 @@ Copy `.env.example` to `.env` for local development. Required:
 - `DATABASE_URL` — Postgres connection string
 - `JWT_SECRET` — at least 32 chars, random hex (generate: `openssl rand -hex 64`)
 - `MAGIC_LINK_SECRET` — at least 32 chars, random hex
-- All others have safe defaults for development (SMS_PROVIDER=stub, STORAGE_PROVIDER=stub)
+- All others have safe defaults for development (EMAIL_PROVIDER=stub, SMS_PROVIDER=stub, STORAGE_PROVIDER=stub)
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5 (modular monolith, API-first)
 - DB: PostgreSQL + Drizzle ORM
-- Auth: JWT (staff) + magic-link + DOB + SMS OTP (patient custom flow)
+- Auth: JWT (staff) + optional email MFA + magic-link + DOB + email OTP (patient custom flow)
 - Password hashing: argon2id
 - Validation: Zod v3
 - Background jobs: BullMQ (Phase 2 — reminder engine)
 - File storage: encrypted S3 (Phase 2 — stub in Phase 1)
-- SMS OTP: Twilio / AWS SNS (Phase 2 — stub logs OTP to console in dev)
+- MFA codes are sent by email during MVP; SMS MFA can be added with a provider later.
 - Build: esbuild (CJS bundle)
 
 ## Where things live
@@ -78,10 +78,10 @@ lib/db/src/schema/
 
 - **RBAC enforced server-side**: Admin/reception get HTTP 403 on any clinical-content endpoint (not just hidden UI). Enforced in `middlewares/rbac.ts` and `clinicalContentGuard`.
 - **Audit log never deletes**: Append-only by design per Serbian/GDPR health-data law. No rotation job. Queryable for breach scoping (regulatory obligation to "Poverenik").
-- **Patient auth is custom, not standard**: magic-link + full DOB + SMS OTP (three factors). DOB-only is insufficient for real health data per legal review. SMS_PROVIDER=stub safe for Stage 0 with dummy data.
+- **Patient auth is custom, not standard**: magic-link + full DOB + email OTP (three factors). DOB-only is insufficient for real health data per legal review.
 - **Questionnaire answers are config-driven JSON**: `schemaVersion` tracked on each record. Allows the product to extend to other endocrine conditions without schema changes. Schema defined in `lib/questionnaire-schema.ts`.
 - **Summaries are deterministic/template-based**: No LLM. Regenerated on every save/submit, only latest stored per (appointment, variant). Clearly labeled as patient-reported.
-- **Storage and SMS are stub-first**: `STORAGE_PROVIDER=stub` and `SMS_PROVIDER=stub` are safe defaults for Phase 1 / Stage 0. Wire real providers (S3, Twilio/SNS) before going live with real patient data.
+- **Storage and SMS notifications are stub-first**: `STORAGE_PROVIDER=stub` and `SMS_PROVIDER=stub` are development defaults. MFA codes use the configured email provider; configure SMTP before using email MFA with real accounts.
 - **Data residency is a config value**: `AWS_REGION` defaults to `eu-central-1` but is never hardcoded. Required before any real patient data flows through.
 - **Soft-delete everywhere**: Cancelled appointments are excluded from clinical views but not hard-deleted (pending legal decision). Uploaded documents have `deletedAt` soft-delete column.
 
@@ -95,7 +95,7 @@ lib/db/src/schema/
 
 - Every access to clinical content is audit logged (see `AUDIT_ACTIONS` in `lib/db/src/schema/audit-log.ts`)
 - Admin/reception access to clinical content returns 403 (server-side enforcement)
-- SMS OTP required (not optional) for real patient data — DOB-only insufficient per legal review
+- Email OTP required (not optional) for real patient data — DOB-only insufficient per legal review
 - Explicit patient consent recorded before questionnaire opens
 - Health data = special category data (GDPR-equivalent Serbian law)
 - DPA, Privacy Policy, DPIA, and Consent Form are go-live blockers (business tasks, not code)
@@ -116,7 +116,7 @@ _Populate as you build._
 ## Gotchas
 
 - Run `pnpm --filter @workspace/db run push` after schema changes (requires DATABASE_URL set)
-- `SMS_PROVIDER=stub` logs OTP to console — never use for real patient data
+- `EMAIL_PROVIDER=stub` logs MFA codes to console — use SMTP for real accounts
 - `STORAGE_PROVIDER=stub` records document metadata but doesn't write files — Phase 2 only
 - Questionnaire `answers` field is `jsonb` — validated at application layer against `schemaVersion`
 - Audit log table is intentionally append-only — no update/delete code should touch it

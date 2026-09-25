@@ -9,10 +9,10 @@
 export interface DobVerificationResult {
   otpSent: boolean;
   /**
-     * Masked phone number
+     * Masked email address
      * @nullable
      */
-  phone?: string | null;
+  email?: string | null;
   /** @nullable */
   sessionId?: string | null;
 }

@@ -185,7 +185,6 @@ router.get("/patients/:patientId/history", async (req, res, next) => {
         fullName: patientsTable.fullName,
         dateOfBirth: patientsTable.dateOfBirth,
         sex: patientsTable.sex,
-        heightCm: patientsTable.heightCm,
         phone: patientsTable.phone,
         createdAt: patientsTable.createdAt,
       })

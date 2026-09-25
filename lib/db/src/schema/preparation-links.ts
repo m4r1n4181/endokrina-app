@@ -19,7 +19,7 @@ export const preparationLinksTable = pgTable("preparation_links", {
   // DOB verification rate-limiting (per spec)
   dobAttemptCount: integer("dob_attempt_count").notNull().default(0),
   dobBlockedUntil: timestamp("dob_blocked_until", { withTimezone: true }),
-  // SMS OTP (required per legal review — DOB-only insufficient for real health data)
+  // Email OTP (required per legal review — DOB-only insufficient for real health data)
   otpCode: text("otp_code"),           // hashed, null when no active OTP
   otpExpiresAt: timestamp("otp_expires_at", { withTimezone: true }),
   otpAttemptCount: integer("otp_attempt_count").notNull().default(0),

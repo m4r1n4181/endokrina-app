@@ -1,10 +1,10 @@
 /**
- * Patient authentication routes — magic link + DOB + SMS OTP flow.
+ * Patient authentication routes — magic link + DOB + email OTP flow.
  * This is a custom flow for patients (not standard username/password).
  *
  * Endpoints:
  *   POST /api/patient-auth/verify-dob   — step 1: verify DOB on link token
- *   POST /api/patient-auth/verify-otp   — step 2: verify SMS OTP
+ *   POST /api/patient-auth/verify-otp   — step 2: verify email OTP
  *   POST /api/patient-auth/resend-otp   — resend OTP (rate-limited)
  */
 import { Router } from "express";
@@ -22,7 +22,7 @@ import {
   isMagicLinkExpired,
 } from "../services/patient-auth";
 import { writeAuditLog, linkAuditCtx, unauthAuditCtx } from "../services/audit";
-import { sendSmsOtp } from "../services/sms";
+import { sendVerificationCodeEmail } from "../services/notifications";
 import { config } from "../lib/config";
 import { extractClientIp } from "../middlewares/audit-middleware";
 import { z } from "zod";
@@ -136,13 +136,15 @@ router.post("/verify-dob", async (req, res, next) => {
 
     // Get patient DOB — compare against invitation or linked patient record
     let expectedDob: string | null = null;
+    let patientEmail: string | null = null;
     if (appointment.patientId) {
       const [patient] = await db
-        .select({ dateOfBirth: patientsTable.dateOfBirth })
+        .select({ dateOfBirth: patientsTable.dateOfBirth, email: patientsTable.email })
         .from(patientsTable)
         .where(eq(patientsTable.id, appointment.patientId))
         .limit(1);
       expectedDob = patient?.dateOfBirth ?? null;
+      patientEmail = patient?.email ?? null;
     }
     // Fallback: DOB captured at invitation time (stored on patient record at creation)
     // If no patient yet matched, we can't verify — should not happen in normal flow
@@ -185,6 +187,11 @@ router.post("/verify-dob", async (req, res, next) => {
       return;
     }
 
+    if (!patientEmail) {
+      res.status(500).json({ error: "Email is not configured for this patient — contact clinic", code: "EMAIL_UNAVAILABLE" });
+      return;
+    }
+
     // DOB correct — reset attempt count, send OTP
     const otpCode = generateOtpCode();
     const otpHash = hashOtp(otpCode);
@@ -201,8 +208,7 @@ router.post("/verify-dob", async (req, res, next) => {
       })
       .where(eq(preparationLinksTable.id, link.id));
 
-    // Send OTP via configured SMS provider
-    await sendSmsOtp(appointment.invitedPhone, otpCode);
+    await sendVerificationCodeEmail(patientEmail, otpCode, "patient_access");
 
     await writeAuditLog({
       ctx: linkAuditCtx(link.id, ip),
@@ -219,7 +225,7 @@ router.post("/verify-dob", async (req, res, next) => {
       outcome: "success",
     });
 
-    res.json({ otpSent: true, phone: maskPhone(appointment.invitedPhone) });
+    res.json({ otpSent: true, email: maskEmail(patientEmail) });
   } catch (err) {
     next(err);
   }
@@ -231,7 +237,7 @@ const verifyOtpSchema = z.object({
 });
 
 // POST /api/patient-auth/verify-otp
-// Step 2: patient submits OTP received via SMS
+// Step 2: patient submits OTP received via email
 router.post("/verify-otp", async (req, res, next) => {
   try {
     const parse = verifyOtpSchema.safeParse(req.body);
@@ -337,10 +343,10 @@ router.post("/verify-otp", async (req, res, next) => {
     next(err);
   }
 });
-// Mask phone for client response (e.g. +381 ** *** **89)
-function maskPhone(phone: string): string {
-  if (phone.length < 4) return "****";
-  return phone.slice(0, -4).replace(/\d/g, "*") + phone.slice(-4);
+function maskEmail(email: string): string {
+  const [localPart, domain] = email.split("@");
+  if (!localPart || !domain) return "***";
+  return `${localPart.slice(0, 1)}${"*".repeat(Math.max(2, localPart.length - 1))}@${domain}`;
 }
 
 export default router;

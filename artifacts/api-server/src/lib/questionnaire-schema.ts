@@ -90,14 +90,6 @@ export const THYROID_QUESTIONNAIRE_V1: QuestionnaireSchema = {
             { value: "prefer_not_to_say", label: "Ne želim da navedem" },
           ],
         },
-        {
-          id: "height_cm",
-          type: "free_text",
-          label: "Visina (cm)",
-          required: false,
-          prefillable: true,
-          hint: "Npr. 170",
-        },
       ],
     },
     {

@@ -14,7 +14,7 @@ describe("POST /api/auth/login", () => {
   beforeAll(async () => {
     await db
       .update(usersTable)
-      .set({ mfaEnabled: true, phone: testUserPhone })
+      .set({ mfaEnabled: true })
       .where(eq(usersTable.email, testEmail));
   });
 
@@ -44,7 +44,7 @@ describe("POST /api/auth/login", () => {
     expect(res.body.code).toBe("INVALID_MFA");
   });
 
-  it("accepts a valid SMS MFA token once", async () => {
+  it("accepts a valid email MFA token once", async () => {
     await db.update(usersTable).set({
       mfaOtpHash: hashOtp(testOtp),
       mfaOtpExpiresAt: new Date(Date.now() + 60_000),
@@ -67,7 +67,7 @@ describe("POST /api/auth/login", () => {
     expect(user).toBeDefined();
   });
 
-  it("rejects enabling MFA without a phone number", async () => {
+  it("enables email MFA without requiring a phone number", async () => {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, testEmail)).limit(1);
     await db.update(usersTable).set({ phone: null, mfaEnabled: false }).where(eq(usersTable.email, testEmail));
 
@@ -76,7 +76,7 @@ describe("POST /api/auth/login", () => {
       .set("Authorization", `Bearer ${signStaffToken(user!)}`)
       .send({ enabled: true });
 
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe("MFA_PHONE_REQUIRED");
+    expect(res.status).toBe(200);
+    expect(res.body.mfaEnabled).toBe(true);
   });
 });

@@ -13,10 +13,10 @@ export const patientMatchStatusEnum = pgEnum("patient_match_status", [
 export const patientsTable = pgTable("patients", {
   id: uuid("id").primaryKey().defaultRandom(),
   fullName: text("full_name").notNull(),
+  email: text("email"),
   phone: text("phone").notNull(),
   dateOfBirth: date("date_of_birth").notNull(), // YYYY-MM-DD, used for identity verification
   sex: sexEnum("sex"),
-  heightCm: text("height_cm"), // stored as text to avoid floating-point coercion issues
   // Stable profile fields that may be prefilled in questionnaire
   additionalNotes: text("additional_notes"),
   // Duplicate-review flag — set when a weak match is found; never auto-merged

@@ -13,8 +13,6 @@ export interface Patient {
   dateOfBirth: string;
   /** @nullable */
   sex?: string | null;
-  /** @nullable */
-  heightCm?: string | null;
   matchStatus?: string;
   duplicateReviewFlag?: boolean;
   /** @nullable */

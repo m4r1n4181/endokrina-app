@@ -116,6 +116,7 @@ export default function LoginStaff() {
                           </InputOTPGroup>
                         </InputOTP>
                       </FormControl>
+                      <p className="text-xs text-gray-500">Kod za prijavu je poslat na email adresu vašeg naloga.</p>
                       <FormMessage />
                     </FormItem>
                   )}

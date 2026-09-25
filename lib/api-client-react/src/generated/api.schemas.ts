@@ -91,10 +91,10 @@ export interface DobVerification {
 export interface DobVerificationResult {
   otpSent: boolean;
   /**
-     * Masked phone number
+     * Masked email address
      * @nullable
      */
-  phone?: string | null;
+  email?: string | null;
   /** @nullable */
   sessionId?: string | null;
 }
@@ -132,7 +132,6 @@ export interface Patient {
   /** @nullable */
   sex?: string | null;
   /** @nullable */
-  heightCm?: string | null;
   matchStatus?: string;
   duplicateReviewFlag?: boolean;
   /** @nullable */
@@ -429,4 +428,3 @@ action?: string | null;
  */
 limit?: number | null;
 };
-

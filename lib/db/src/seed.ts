@@ -227,7 +227,7 @@ async function seed() {
    Email:     dr.jovic@clinic.test
    Password:  Doctor1234!doc
 
- PATIENT FLOW  (magic link → DOB → SMS OTP → consent → questionnaire)
+ PATIENT FLOW  (magic link → DOB → email OTP → consent → questionnaire)
    Magic link: ${baseUrl}/prepare/${token}
    DOB:        1985-03-15  (format: YYYY-MM-DD)
    OTP:        printed in the API SERVER CONSOLE when you submit the DOB

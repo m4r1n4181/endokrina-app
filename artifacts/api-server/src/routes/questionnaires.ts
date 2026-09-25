@@ -155,7 +155,6 @@ router.get("/:appointmentId", requirePatientAuth, async (req, res, next) => {
           fullName: patientsTable.fullName,
           dateOfBirth: patientsTable.dateOfBirth,
           sex: patientsTable.sex,
-          heightCm: patientsTable.heightCm,
           matchStatus: patientsTable.matchStatus,
         })
         .from(patientsTable)
@@ -167,7 +166,6 @@ router.get("/:appointmentId", requirePatientAuth, async (req, res, next) => {
           full_name: patient.fullName,
           date_of_birth: patient.dateOfBirth,
           sex: patient.sex ?? undefined,
-          height_cm: patient.heightCm ?? undefined,
         };
       }
     }
@@ -251,7 +249,6 @@ router.post("/:appointmentId/save", requirePatientAuth, async (req, res, next) =
         fullName?: string;
         dateOfBirth?: string;
         sex?: "male" | "female" | "other" | "prefer_not_to_say";
-        heightCm?: string;
       } = {};
 
       if (typeof parse.data.full_name === "string" && parse.data.full_name.trim()) {
@@ -267,9 +264,6 @@ router.post("/:appointmentId/save", requirePatientAuth, async (req, res, next) =
         parse.data.sex === "prefer_not_to_say"
       ) {
         stableProfile.sex = parse.data.sex;
-      }
-      if (typeof parse.data.height_cm === "string" && parse.data.height_cm.trim()) {
-        stableProfile.heightCm = parse.data.height_cm.trim();
       }
 
       if (Object.keys(stableProfile).length > 0) {

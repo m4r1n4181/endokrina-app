@@ -1,15 +1,15 @@
 /**
- * Patient authentication service — preparation link + DOB + SMS OTP flow.
+ * Patient authentication service — preparation link + DOB + email OTP flow.
  * This is a custom flow, not standard username/password.
  *
  * Flow:
  *   1. Patient opens magic link (signed token)
  *   2. Patient enters full DOB → rate-limited, max DOB_MAX_ATTEMPTS before block
- *   3. On correct DOB → SMS OTP is sent to the phone number on file
+ *   3. On correct DOB → email OTP is sent to the address on file
  *   4. Patient enters OTP → rate-limited, max OTP_MAX_ATTEMPTS before block
  *   5. On correct OTP → patient session established (short-lived JWT)
  *
- * Stage 0 fallback: if SMS_PROVIDER=stub, OTP is logged to console only.
+ * Development fallback: if EMAIL_PROVIDER=stub, OTP is logged to console only.
  * DOB-only must never be used as the model for real patient data.
  */
 import crypto from "crypto";

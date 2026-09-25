@@ -70,3 +70,21 @@ export async function sendEmail(to: string, subject: string, content: string | E
       "Use EMAIL_PROVIDER=smtp (Amazon SES is reachable through its SMTP interface).",
   );
 }
+
+export async function sendVerificationCodeEmail(
+  to: string,
+  code: string,
+  purpose: "staff_login" | "patient_access",
+): Promise<void> {
+  const subject = purpose === "staff_login"
+    ? "Kod za prijavu na portal klinike"
+    : "Kod za pristup pripremi za pregled";
+  const purposeText = purpose === "staff_login"
+    ? "prijavu na portal klinike"
+    : "pristup upitniku za pregled";
+  const expiry = `${config.OTP_EXPIRES_MINUTES} minuta`;
+  await sendEmail(to, subject, {
+    text: `Vaš verifikacioni kod za ${purposeText} je: ${code}. Kod važi ${expiry}. Ako niste tražili ovaj kod, ignorišite ovu poruku.`,
+    html: `<p>Vaš verifikacioni kod za ${purposeText} je:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p><p>Kod važi ${expiry}. Ako niste tražili ovaj kod, ignorišite ovu poruku.</p>`,
+  });
+}

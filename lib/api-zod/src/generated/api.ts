@@ -89,7 +89,7 @@ export const VerifyDobBody = zod.object({
 
 export const VerifyDobResponse = zod.object({
   "otpSent": zod.boolean(),
-  "phone": zod.string().nullish().describe('Masked phone number'),
+  "email": zod.string().nullish().describe('Masked email address'),
   "sessionId": zod.string().nullish()
 })
 
@@ -152,7 +152,6 @@ export const CreateAppointmentResponse = zod.object({
   "phone": zod.string(),
   "dateOfBirth": zod.string(),
   "sex": zod.string().nullish(),
-  "heightCm": zod.string().nullish(),
   "matchStatus": zod.string().optional(),
   "duplicateReviewFlag": zod.boolean().optional(),
   "consentGivenAt": zod.coerce.date().nullish(),
@@ -207,7 +206,6 @@ export const ListAppointmentsResponseItem = zod.object({
   "phone": zod.string(),
   "dateOfBirth": zod.string(),
   "sex": zod.string().nullish(),
-  "heightCm": zod.string().nullish(),
   "matchStatus": zod.string().optional(),
   "duplicateReviewFlag": zod.boolean().optional(),
   "consentGivenAt": zod.coerce.date().nullish(),
@@ -255,7 +253,6 @@ export const GetAppointmentResponse = zod.object({
   "phone": zod.string(),
   "dateOfBirth": zod.string(),
   "sex": zod.string().nullish(),
-  "heightCm": zod.string().nullish(),
   "matchStatus": zod.string().optional(),
   "duplicateReviewFlag": zod.boolean().optional(),
   "consentGivenAt": zod.coerce.date().nullish(),
@@ -339,7 +336,6 @@ export const UpdateAppointmentResponse = zod.object({
   "phone": zod.string(),
   "dateOfBirth": zod.string(),
   "sex": zod.string().nullish(),
-  "heightCm": zod.string().nullish(),
   "matchStatus": zod.string().optional(),
   "duplicateReviewFlag": zod.boolean().optional(),
   "consentGivenAt": zod.coerce.date().nullish(),
@@ -453,7 +449,6 @@ export const GetQuestionnaireResponse = zod.object({
   "phone": zod.string(),
   "dateOfBirth": zod.string(),
   "sex": zod.string().nullish(),
-  "heightCm": zod.string().nullish(),
   "matchStatus": zod.string().optional(),
   "duplicateReviewFlag": zod.boolean().optional(),
   "consentGivenAt": zod.coerce.date().nullish(),
@@ -638,7 +633,6 @@ export const GetPatientHistoryResponse = zod.object({
   "phone": zod.string(),
   "dateOfBirth": zod.string(),
   "sex": zod.string().nullish(),
-  "heightCm": zod.string().nullish(),
   "matchStatus": zod.string().optional(),
   "duplicateReviewFlag": zod.boolean().optional(),
   "consentGivenAt": zod.coerce.date().nullish(),
@@ -675,7 +669,6 @@ export const GetPatientHistoryResponse = zod.object({
   "phone": zod.string(),
   "dateOfBirth": zod.string(),
   "sex": zod.string().nullish(),
-  "heightCm": zod.string().nullish(),
   "matchStatus": zod.string().optional(),
   "duplicateReviewFlag": zod.boolean().optional(),
   "consentGivenAt": zod.coerce.date().nullish(),
@@ -754,5 +747,4 @@ export const GetAuditLogResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const GetAuditLogResponse = zod.array(GetAuditLogResponseItem)
-
 
