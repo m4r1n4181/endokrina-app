@@ -18,6 +18,7 @@ import crypto from "crypto";
 import { saveDocument } from "../lib/document-storage";
 import { z } from "zod";
 import multer from "multer";
+import { detectUploadMime, isLikelyUnreadableImage } from "../lib/document-validation";
 
 const router = Router();
 
@@ -93,10 +94,18 @@ router.post("/:appointmentId", requirePatientAuth, uploadFile, async (req, res, 
       return;
     }
 
-    if (!ALLOWED_UPLOAD_MIME_TYPES.includes(req.file.mimetype as (typeof ALLOWED_UPLOAD_MIME_TYPES)[number])) {
+    const detectedMime = detectUploadMime(req.file.buffer);
+    if (!detectedMime) {
+      res.status(400).json({ error: "Nepoznat ili nepodržan format fajla", code: "UNSUPPORTED_FILE_TYPE" });
+      return;
+    }
+
+    // What we really detected goes to database/S3
+    if (!ALLOWED_UPLOAD_MIME_TYPES.includes(detectedMime)) {
       res.status(400).json({ error: "Unsupported file type", code: "UNSUPPORTED_FILE_TYPE" });
       return;
     }
+
 
     const parse = uploadMetaSchema.safeParse(req.body);
     if (!parse.success) {
@@ -114,7 +123,7 @@ router.post("/:appointmentId", requirePatientAuth, uploadFile, async (req, res, 
       .values({
         appointmentId,
         originalFileName,
-        mimeType,
+        detectedMime,
         fileSizeBytes,
         storageKey,
         documentType: documentType ?? null,
@@ -122,14 +131,14 @@ router.post("/:appointmentId", requirePatientAuth, uploadFile, async (req, res, 
       .returning({
         id: uploadedDocumentsTable.id,
         originalFileName: uploadedDocumentsTable.originalFileName,
-        mimeType: uploadedDocumentsTable.mimeType,
+        detectedMime: uploadedDocumentsTable.detectedMime,
         fileSizeBytes: uploadedDocumentsTable.fileSizeBytes,
         documentType: uploadedDocumentsTable.documentType,
         uploadedAt: uploadedDocumentsTable.uploadedAt,
       });
 
     if (fileBytes) {
-      await saveDocument(storageKey, fileBytes, mimeType);
+      await saveDocument(storageKey, fileBytes, detectedMime);
     }
 
     // Persist lab status when provided (or default to uploaded_digitally when a file is added)
@@ -228,7 +237,7 @@ router.get("/:appointmentId", requirePatientAuth, async (req, res, next) => {
       .select({
         id: uploadedDocumentsTable.id,
         originalFileName: uploadedDocumentsTable.originalFileName,
-        mimeType: uploadedDocumentsTable.mimeType,
+        detectedMime: uploadedDocumentsTable.detectedMime,
         fileSizeBytes: uploadedDocumentsTable.fileSizeBytes,
         documentType: uploadedDocumentsTable.documentType,
         uploadedAt: uploadedDocumentsTable.uploadedAt,
