@@ -42,6 +42,7 @@ export * from './questionnaireRecordStatus';
 export * from './questionnaireState';
 export * from './questionnaireStatePrefill';
 export * from './resendLinkResult';
+export * from './resendOtpRequest';
 export * from './saveResult';
 export * from './staffSession';
 export * from './staffUser';

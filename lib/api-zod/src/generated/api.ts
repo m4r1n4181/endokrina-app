@@ -109,6 +109,20 @@ export const VerifyOtpResponse = zod.object({
 
 
 /**
+ * @summary Resend OTP for an in-progress verification session
+ */
+export const ResendOtpBody = zod.object({
+  "token": zod.string()
+})
+
+export const ResendOtpResponse = zod.object({
+  "otpSent": zod.boolean(),
+  "email": zod.string().nullish().describe('Masked email address'),
+  "sessionId": zod.string().nullish()
+})
+
+
+/**
  * @summary Create appointment invitation (admin only)
  */
 export const CreateAppointmentBody = zod.object({
@@ -747,4 +761,5 @@ export const GetAuditLogResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const GetAuditLogResponse = zod.array(GetAuditLogResponseItem)
+
 

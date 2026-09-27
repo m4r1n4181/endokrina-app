@@ -88,6 +88,10 @@ export interface DobVerification {
   dateOfBirth: string;
 }
 
+export interface ResendOtpRequest {
+  token: string;
+}
+
 export interface DobVerificationResult {
   otpSent: boolean;
   /**
@@ -131,7 +135,6 @@ export interface Patient {
   dateOfBirth: string;
   /** @nullable */
   sex?: string | null;
-  /** @nullable */
   matchStatus?: string;
   duplicateReviewFlag?: boolean;
   /** @nullable */
@@ -428,3 +431,4 @@ action?: string | null;
  */
 limit?: number | null;
 };
+

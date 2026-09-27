@@ -343,6 +343,117 @@ router.post("/verify-otp", async (req, res, next) => {
     next(err);
   }
 });
+const resendOtpSchema = z.object({
+  token: z.string().min(1),
+});
+
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+
+// POST /api/patient-auth/resend-otp
+// Resends a fresh OTP for an already-started verification session (after DOB step).
+// Rate-limited by a fixed cooldown so the button can't be spam-clicked.
+router.post("/resend-otp", async (req, res, next) => {
+  try {
+    const parse = resendOtpSchema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: "Invalid request", issues: parse.error.issues });
+      return;
+    }
+    const { token } = parse.data;
+    const ip = extractClientIp(req);
+
+    if (!verifyLinkToken(token)) {
+      res.status(404).json({ error: "Link not found or inactive", code: "LINK_INACTIVE" });
+      return;
+    }
+
+    const [link] = await db
+      .select()
+      .from(preparationLinksTable)
+      .where(eq(preparationLinksTable.token, token))
+      .limit(1);
+
+    if (!link || link.status !== "active") {
+      res.status(404).json({ error: "Link not found or inactive", code: "LINK_INACTIVE" });
+      return;
+    }
+
+    if (isMagicLinkExpired(link)) {
+      res.status(410).json({ error: "Link expired", code: "LINK_EXPIRED" });
+      return;
+    }
+
+    if (isOtpBlocked(link)) {
+      res.status(429).json({ error: "Too many attempts. Please try again later.", code: "OTP_RATE_LIMITED" });
+      return;
+    }
+
+    // Can only resend if a verification session was already started (DOB step passed)
+    if (!link.otpCode || !link.otpExpiresAt) {
+      res.status(400).json({ error: "No active verification session. Please restart.", code: "NO_OTP" });
+      return;
+    }
+
+    // Cooldown so the button can't be spammed — derive "issued at" from expiry minus the TTL
+    const otpIssuedAt = new Date(link.otpExpiresAt).getTime() - config.OTP_EXPIRES_MINUTES * 60 * 1000;
+    const secondsSinceIssued = (Date.now() - otpIssuedAt) / 1000;
+    if (secondsSinceIssued < OTP_RESEND_COOLDOWN_SECONDS) {
+      res.status(429).json({
+        error: "Please wait before requesting another code",
+        code: "RESEND_COOLDOWN",
+        retryAfterSeconds: Math.ceil(OTP_RESEND_COOLDOWN_SECONDS - secondsSinceIssued),
+      });
+      return;
+    }
+
+    const [appointment] = await db
+      .select()
+      .from(appointmentsTable)
+      .where(eq(appointmentsTable.id, link.appointmentId))
+      .limit(1);
+
+    if (!appointment?.patientId) {
+      res.status(500).json({ error: "Cannot resend — contact clinic", code: "DOB_UNAVAILABLE" });
+      return;
+    }
+
+    const [patient] = await db
+      .select({ email: patientsTable.email })
+      .from(patientsTable)
+      .where(eq(patientsTable.id, appointment.patientId))
+      .limit(1);
+
+    if (!patient?.email) {
+      res.status(500).json({ error: "Email is not configured for this patient — contact clinic", code: "EMAIL_UNAVAILABLE" });
+      return;
+    }
+
+    // Fresh code — invalidates the previous one
+    const otpCode = generateOtpCode();
+    const otpHash = hashOtp(otpCode);
+    const otpExpiresAt = new Date(Date.now() + config.OTP_EXPIRES_MINUTES * 60 * 1000);
+
+    await db.update(preparationLinksTable)
+      .set({ otpCode: otpHash, otpExpiresAt, lastAccessedAt: new Date() })
+      .where(eq(preparationLinksTable.id, link.id));
+
+    await sendVerificationCodeEmail(patient.email, otpCode, "patient_access");
+
+    await writeAuditLog({
+      ctx: linkAuditCtx(link.id, ip),
+      action: AUDIT_ACTIONS.LINK_OTP_SENT,
+      targetType: "preparation_link",
+      targetId: link.id,
+      outcome: "success",
+      context: { resend: true },
+    });
+
+    res.json({ otpSent: true, email: maskEmail(patient.email) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 function maskEmail(email: string): string {
   const [localPart, domain] = email.split("@");
   if (!localPart || !domain) return "***";

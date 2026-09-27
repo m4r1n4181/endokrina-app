@@ -1,5 +1,5 @@
 import { useLocation, useParams } from 'wouter';
-import { useVerifyOtp } from '@workspace/api-client-react';
+import { useVerifyOtp, useResendOtp } from '@workspace/api-client-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from '@/component
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from 'react';
 
 const otpSchema = z.object({
   otp: z.string().length(6, "Potreban je kod od 6 cifara"),
@@ -22,6 +23,32 @@ export default function PrepareOtp() {
   const { login } = usePatientAuth();
   const verifyMutation = useVerifyOtp();
   const maskedEmail = sessionStorage.getItem('patient_masked_email');
+  const resendMutation = useResendOtp();
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  const handleResend = () => {
+    resendMutation.mutate({ data: { token: token || '' } }, {
+      onSuccess: () => {
+        toast({ title: 'Kod poslat', description: 'Proverite email (i spam folder).' });
+        setCooldown(60);
+      },
+      onError: (err: any) => {
+        const retryAfter = err?.response?.data?.retryAfterSeconds;
+        if (retryAfter) {
+          setCooldown(retryAfter);
+          toast({ title: 'Sačekajte malo', description: `Možete zatražiti novi kod za ${retryAfter}s.` });
+        } else {
+          toast({ title: 'Greška', description: 'Pokušajte ponovo kasnije.', variant: 'destructive' });
+        }
+      }
+    });
+  };
 
   const form = useForm<z.infer<typeof otpSchema>>({
     resolver: zodResolver(otpSchema),
@@ -49,7 +76,8 @@ export default function PrepareOtp() {
         
         <h1 className="text-2xl font-serif text-[#185e46] mb-4">Potvrdite email adresu</h1>
         <p className="text-gray-600 mb-8">
-          Poslali smo email sa 6-cifrenim kodom{maskedEmail ? ` na ${maskedEmail}` : ' na vašu email adresu'}. Unesite kod ispod.
+          Poslali smo email sa 6-cifrenim kodom{maskedEmail ? ` na ${maskedEmail}` : ' na vašu email adresu'}.
+          Ako ga ne vidite, proverite i spam/junk folder.
         </p>
 
         <Form {...form}>
@@ -82,6 +110,14 @@ export default function PrepareOtp() {
               disabled={verifyMutation.isPending || form.watch('otp').length < 6}
             >
               {verifyMutation.isPending ? 'Proveravam...' : 'Potvrdi'}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleResend}
+              disabled={cooldown > 0 || resendMutation.isPending}
+              className="mt-4 text-sm text-[#185e46] underline disabled:text-gray-400 disabled:no-underline bg-transparent"
+            >
+              {cooldown > 0 ? `Pošalji ponovo (${cooldown}s)` : 'Niste dobili kod? Pošaljite ponovo'}
             </Button>
           </form>
         </Form>

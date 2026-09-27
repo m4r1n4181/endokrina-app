@@ -46,6 +46,7 @@ import type {
   QuestionnaireRecord,
   QuestionnaireState,
   ResendLinkResult,
+  ResendOtpRequest,
   SaveResult,
   StaffSession,
   StaffUser,
@@ -591,6 +592,77 @@ export const useVerifyOtp = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getVerifyOtpMutationOptions(options));
+    }
+
+export const getResendOtpUrl = () => {
+
+
+
+
+  return `/api/patient-auth/resend-otp`
+}
+
+/**
+ * @summary Resend OTP for an in-progress verification session
+ */
+export const resendOtp = async (resendOtpRequest: ResendOtpRequest, options?: RequestInit): Promise<DobVerificationResult> => {
+
+  return customFetch<DobVerificationResult>(getResendOtpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resendOtpRequest)
+  }
+);}
+
+
+
+
+
+export const getResendOtpMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendOtp>>, TError,{data: BodyType<ResendOtpRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resendOtp>>, TError,{data: BodyType<ResendOtpRequest>}, TContext> => {
+
+const mutationKey = ['resendOtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resendOtp>>, {data: BodyType<ResendOtpRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resendOtp(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResendOtpMutationResult = NonNullable<Awaited<ReturnType<typeof resendOtp>>>
+    export type ResendOtpMutationBody = BodyType<ResendOtpRequest>
+    export type ResendOtpMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Resend OTP for an in-progress verification session
+ */
+export const useResendOtp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendOtp>>, TError,{data: BodyType<ResendOtpRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resendOtp>>,
+        TError,
+        {data: BodyType<ResendOtpRequest>},
+        TContext
+      > => {
+      return useMutation(getResendOtpMutationOptions(options));
     }
 
 export const getCreateAppointmentUrl = () => {
