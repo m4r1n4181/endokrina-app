@@ -56,7 +56,7 @@ router.get("/appointments/:id/documents", async (req, res, next) => {
         id: uploadedDocumentsTable.id,
         appointmentId: uploadedDocumentsTable.appointmentId,
         originalFileName: uploadedDocumentsTable.originalFileName,
-        mimeType: uploadedDocumentsTable.mimeType,
+        mimeType: uploadedDocumentsTable.detectedMime,
         fileSizeBytes: uploadedDocumentsTable.fileSizeBytes,
         documentType: uploadedDocumentsTable.documentType,
         uploadedAt: uploadedDocumentsTable.uploadedAt,
@@ -120,7 +120,7 @@ router.get("/appointments/:id/documents/:docId/download", async (req, res, next)
     res.json({
       downloadUrl: `/api/doctor/appointments/${id}/documents/${docId}/file`,
       fileName: doc.originalFileName,
-      mimeType: doc.mimeType,
+      mimeType: doc.detectedMime,
       _note: "Use the file endpoint for download/view.",
     });
   } catch (err) {
@@ -163,7 +163,7 @@ router.get("/appointments/:id/documents/:docId/file", async (req, res, next) => 
       context: { disposition },
     });
 
-    res.setHeader("Content-Type", doc.mimeType);
+    res.setHeader("Content-Type", doc.detectedMime);
     const safeFileName = doc.originalFileName.replace(/"/g, '\\"');
     res.setHeader("Content-Disposition", `${disposition}; filename="${safeFileName}"`);
     res.send(fileBytes);
