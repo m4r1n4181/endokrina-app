@@ -24,8 +24,10 @@ export async function ensureStorageBucket(): Promise<void> {
   const bucket = requireBucket();
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }));
-    return;
-  } catch {
+  } catch (err) {
+    const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+    // AWS bucket made by hand, not automatically
+    if (status !== 404 || !config.AWS_ENDPOINT_URL) throw err;
     await s3.send(
       new CreateBucketCommand({
         Bucket: bucket,
