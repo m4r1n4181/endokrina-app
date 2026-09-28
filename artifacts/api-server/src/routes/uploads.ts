@@ -18,7 +18,7 @@ import crypto from "crypto";
 import { saveDocument } from "../lib/document-storage";
 import { z } from "zod";
 import multer from "multer";
-import { detectUploadMime, isLikelyUnreadableImage } from "../lib/document-validation";
+import { detectUploadMime } from "../lib/document-validation";
 
 const router = Router();
 
