@@ -8,7 +8,7 @@
  */
 import express, { Router } from "express";
 import { db, appointmentsTable, preparationLinksTable, patientsTable, AUDIT_ACTIONS } from "../lib/db";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, isNull, or, sql } from "drizzle-orm";
 import { requireStaffAuth } from "../middlewares/authenticate";
 import { staffOnly, adminOnly, doctorOnly } from "../middlewares/rbac";
 import { writeAuditLog, userAuditCtx } from "../services/audit";
@@ -18,6 +18,7 @@ import { config } from "../lib/config";
 import { z } from "zod";
 import { sendEmail } from "../services/notifications";
 import { renderPatientInviteEmail } from "../services/patient-emails";
+import { normalizePersonName } from "../lib/person-name";
 
 const router = Router();
 
@@ -46,7 +47,7 @@ router.post("/", adminOnly, async (req, res, next) => {
       res.status(400).json({ error: "Invalid request", issues: parse.error.issues });
       return;
     }
-    const data = parse.data;
+    const data = { ...parse.data, invitedFullName: normalizePersonName(parse.data.invitedFullName) };
     const ip = extractClientIp(req);
     const userId = req.user!.sub;
 
@@ -84,7 +85,7 @@ router.post("/", adminOnly, async (req, res, next) => {
 
     if (existingPatient) {
       await db.update(patientsTable)
-        .set({ email: data.invitedEmail, updatedAt: new Date() })
+        .set({ fullName: data.invitedFullName, email: data.invitedEmail, updatedAt: new Date() })
         .where(eq(patientsTable.id, existingPatient.id));
     }
 
@@ -212,8 +213,26 @@ router.get("/", staffOnly, async (req, res, next) => {
         doctorId: appointmentsTable.doctorId,
         createdAt: appointmentsTable.createdAt,
         updatedAt: appointmentsTable.updatedAt,
+        patient: {
+          id: patientsTable.id,
+          fullName: patientsTable.fullName,
+          phone: patientsTable.phone,
+          dateOfBirth: patientsTable.dateOfBirth,
+          email: patientsTable.email,
+          createdAt: patientsTable.createdAt,
+        },
       })
       .from(appointmentsTable)
+      .leftJoin(
+        patientsTable,
+        or(
+          eq(appointmentsTable.patientId, patientsTable.id),
+          and(
+            isNull(appointmentsTable.patientId),
+            sql`right(regexp_replace(${appointmentsTable.invitedPhone}, '[^0-9]', '', 'g'), 9) = right(regexp_replace(${patientsTable.phone}, '[^0-9]', '', 'g'), 9)`
+          )
+        )
+      )
       .where(
         and(
           // Exclude cancelled appointments from clinical views by default
@@ -233,7 +252,10 @@ router.get("/", staffOnly, async (req, res, next) => {
     }
 
     // OpenAPI: array of Appointment
-    res.json(rows);
+    res.json(rows.map(({ patient, ...appointment }) => ({
+      ...appointment,
+      ...(req.user?.role === "clinic_admin" && patient?.id ? { patient } : {}),
+    })));
   } catch (err) {
     next(err);
   }

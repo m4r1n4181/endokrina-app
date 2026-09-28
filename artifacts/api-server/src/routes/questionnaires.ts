@@ -16,7 +16,7 @@ import { Router } from "express";
 import {
   db, questionnairesTable, appointmentsTable, patientsTable, AUDIT_ACTIONS,
 } from "../lib/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requirePatientAuth, requireStaffAuth } from "../middlewares/authenticate";
 import { clinicalContentGuard } from "../middlewares/rbac";
 import { writeAuditLog, linkAuditCtx, userAuditCtx } from "../services/audit";
@@ -28,6 +28,7 @@ import {
   THYROID_QUESTIONNAIRE_V1,
 } from "../lib/questionnaire-schema";
 import { z } from "zod";
+import { normalizePersonName } from "../lib/person-name";
 
 const router = Router();
 
@@ -127,6 +128,7 @@ router.get("/:appointmentId", requirePatientAuth, async (req, res, next) => {
     const [appointment] = await db
       .select({
         patientId: appointmentsTable.patientId,
+        invitedPhone: appointmentsTable.invitedPhone,
         status: appointmentsTable.status,
         scheduledAt: appointmentsTable.scheduledAt,
         appointmentType: appointmentsTable.appointmentType,
@@ -144,24 +146,37 @@ router.get("/:appointmentId", requirePatientAuth, async (req, res, next) => {
       appointment.status === "locked" ||
       (appointment.status !== "reopened" && new Date(appointment.scheduledAt) <= new Date());
 
-    // Consent creates an empty questionnaire row, so check answers rather than
-    // row existence before deciding whether stable profile fields can be used.
+    // Profile fields are always available as defaults; saved answers take precedence below.
     let prefill: Record<string, unknown> | null = null;
-    const questionnaireAnswers = questionnaire?.answers as Record<string, unknown> | undefined;
-    const hasAnswers = questionnaireAnswers && Object.keys(questionnaireAnswers).length > 0;
-    if (!hasAnswers && appointment.patientId) {
+    if (appointment.patientId) {
       const [patient] = await db
         .select({
           fullName: patientsTable.fullName,
           dateOfBirth: patientsTable.dateOfBirth,
           sex: patientsTable.sex,
-          matchStatus: patientsTable.matchStatus,
         })
         .from(patientsTable)
         .where(eq(patientsTable.id, appointment.patientId))
         .limit(1);
 
-      if (patient && patient.matchStatus === "auto_linked") {
+      if (patient) {
+        prefill = {
+          full_name: patient.fullName,
+          date_of_birth: patient.dateOfBirth,
+          sex: patient.sex ?? undefined,
+        };
+      }
+    } else {
+      const [patient] = await db
+        .select({
+          fullName: patientsTable.fullName,
+          dateOfBirth: patientsTable.dateOfBirth,
+          sex: patientsTable.sex,
+        })
+        .from(patientsTable)
+        .where(sql`right(regexp_replace(${patientsTable.phone}, '[^0-9]', '', 'g'), 9) = right(regexp_replace(${appointment.invitedPhone}, '[^0-9]', '', 'g'), 9)`)
+        .limit(1);
+      if (patient) {
         prefill = {
           full_name: patient.fullName,
           date_of_birth: patient.dateOfBirth,
@@ -252,7 +267,7 @@ router.post("/:appointmentId/save", requirePatientAuth, async (req, res, next) =
       } = {};
 
       if (typeof parse.data.full_name === "string" && parse.data.full_name.trim()) {
-        stableProfile.fullName = parse.data.full_name.trim();
+        stableProfile.fullName = normalizePersonName(parse.data.full_name);
       }
       if (typeof parse.data.date_of_birth === "string" && parse.data.date_of_birth) {
         stableProfile.dateOfBirth = parse.data.date_of_birth;

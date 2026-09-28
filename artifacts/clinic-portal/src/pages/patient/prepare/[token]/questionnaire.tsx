@@ -10,42 +10,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ChevronRight, ChevronLeft, Save, FileText, CheckCircle2, Plus, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Save, FileText, Plus, Trash2, Lock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DateOfBirthField } from '@/components/date-of-birth-field';
 import { useToast } from '@/hooks/use-toast';
+import { normalizePersonName } from '@/lib/person-name';
+import {
+  fetchQuestionnaireSchema,
+  type MedicationRow,
+  type Question,
+  type QuestionnaireSchema,
+} from '@/lib/questionnaire';
 
-type QuestionType = 'single_choice' | 'multi_choice' | 'free_text' | 'medication_list' | 'boolean' | 'date';
-
-interface Question {
-  id: string;
-  type: QuestionType;
-  label: string;
-  required: boolean;
-  options?: { value: string; label: string }[];
-  conditional?: { parentQuestionId: string; showWhen: string | string[] };
-  hint?: string;
-  mustConfirm?: boolean;
-}
-
-interface SchemaSection {
-  id: string;
-  title: string;
-  questions: Question[];
-}
-
-interface QuestionnaireSchema {
-  version: string;
-  condition: string;
-  sections: SchemaSection[];
-}
-
-type MedRow = { name: string; dose: string; frequency: string };
-
-async function fetchSchema(): Promise<QuestionnaireSchema> {
-  const res = await fetch('/api/questionnaires/schema');
-  if (!res.ok) throw new Error('Schema load failed');
-  return res.json();
-}
+type MedRow = MedicationRow;
 
 function shouldShow(q: Question, answers: Record<string, unknown>): boolean {
   if (!q.conditional) return true;
@@ -75,7 +52,8 @@ export default function PrepareQuestionnaire() {
 
   const { data: schema, isLoading: schemaLoading } = useQuery({
     queryKey: ['questionnaire-schema'],
-    queryFn: fetchSchema,
+    queryFn: fetchQuestionnaireSchema,
+    staleTime: 30 * 60 * 1000,
   });
 
   const { data, isLoading } = useGetQuestionnaire(appointmentId || '', {
@@ -104,12 +82,20 @@ export default function PrepareQuestionnaire() {
           flat[k] = v;
         }
       }
-      setAnswers(flat);
+      const mergedAnswers = { ...(data?.prefill as Record<string, unknown> | null ?? {}), ...flat };
+      if (typeof mergedAnswers.full_name === 'string') {
+        mergedAnswers.full_name = normalizePersonName(mergedAnswers.full_name);
+      }
+      setAnswers(mergedAnswers);
       initRef.current = true;
     } else if (data?.prefill && schema) {
       // nov upitnik za ovaj appointment, ali pacijent je vraćajući —
       // predlaži samo prefillable polja, pacijent i dalje može da ih izmeni
-      setAnswers(data.prefill as Record<string, unknown>);
+      const prefilledAnswers = { ...(data.prefill as Record<string, unknown>) };
+      if (typeof prefilledAnswers.full_name === 'string') {
+        prefilledAnswers.full_name = normalizePersonName(prefilledAnswers.full_name);
+      }
+      setAnswers(prefilledAnswers);
       initRef.current = true;
     }
   }, [data, schema]);
@@ -198,12 +184,21 @@ export default function PrepareQuestionnaire() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="max-w-md bg-white p-8 rounded-3xl text-center shadow-sm">
-          <CheckCircle2 className="mx-auto h-16 w-16 text-green-500 mb-4" />
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
+            <Lock className="h-8 w-8 text-amber-600" aria-hidden="true" />
+          </div>
           <h2 className="text-2xl font-serif text-gray-900 mb-2">Upitnik je zaključan</h2>
-          <p className="text-gray-600 mb-6">
-            Ovaj upitnik je zaključan jer je vreme pregleda počelo. Kontaktirajte kliniku ako je nešto važno potrebno ispraviti.
+          <p className="text-gray-600 mb-2 text-lg leading-relaxed">
+            Ovaj upitnik je zaključan jer je vreme pregleda počelo. Ako je potrebno da nešto važno
+            ispravite, pozovite kliniku i oni mogu da ga ponovo otvore.
           </p>
-          <Button className="w-full bg-[#185e46]" onClick={() => setLocation(`/prepare/${token}/documents`)}>
+          <p className="text-sm text-gray-500 mb-6">
+            Odgovori koje ste poslali ostaju sačuvani i doktor ih vidi pre pregleda.
+          </p>
+          <Button
+            className="w-full bg-[#185e46] hover:bg-[#124a37] py-6 text-lg rounded-xl"
+            onClick={() => setLocation(`/prepare/${token}/documents`)}
+          >
             Nastavi na dokumenta
           </Button>
         </div>
@@ -230,12 +225,23 @@ export default function PrepareQuestionnaire() {
           </p>
         )}
 
-        {(q.type === 'free_text' || q.type === 'date') && (
-          q.type === 'date' || q.id === 'full_name' ? (
+        {q.type === 'date' && (
+          <div className="mt-2">
+            <DateOfBirthField
+              variant="patient"
+              value={(val as string) || ''}
+              onChange={(value) => setAnswer(q.id, value)}
+            />
+          </div>
+        )}
+
+        {q.type === 'free_text' && (
+          q.id === 'full_name' ? (
             <Input
-              type={q.type === 'date' ? 'date' : 'text'}
+              type="text"
               value={(val as string) || ''}
               onChange={(e) => setAnswer(q.id, e.target.value)}
+              onBlur={() => typeof val === 'string' && setAnswer(q.id, normalizePersonName(val))}
               className="bg-gray-50 text-base py-6"
             />
           ) : (
@@ -325,38 +331,62 @@ export default function PrepareQuestionnaire() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 pt-8">
-        <p className="text-sm text-gray-500 mb-2">
-          Podaci su pacijent-prijavljeni (nisu verifikovani klinički nalazi). Ovaj formular ne zamenjuje zvaničnu evidenciju.
+      <main className="max-w-3xl mx-auto px-4 pt-6 sm:pt-8">
+        <p className="mb-2 text-sm text-gray-500 leading-relaxed">
+          Ovaj formular pomaže vašem doktoru da se pripremi za pregled. On ne zamenjuje medicinski pregled
+          ili zvaničnu evidenciju klinike.
         </p>
-        <h2 className="text-2xl font-serif text-gray-900 mb-6">{currentSectionTitle}</h2>
+        <p className="mb-6 text-xs text-gray-400">
+          Odgovori su ono što ste sami prijavili; doktor ih vidi pre pregleda.
+        </p>
+        <h2 className="text-xl sm:text-2xl font-serif text-gray-900 mb-4 sm:mb-6">{currentSectionTitle}</h2>
         <div className="space-y-2">{visibleQuestions.map(renderQuestion)}</div>
       </main>
 
-      <footer className="fixed bottom-0 w-full bg-white border-t p-4 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
+      <footer className="fixed bottom-0 w-full bg-white border-t p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
         <div className="max-w-3xl mx-auto flex justify-between items-center gap-2">
-          <Button variant="outline" onClick={handlePrev} disabled={currentSectionIdx === 0} className="rounded-xl px-6 min-h-12">
-            <ChevronLeft size={18} className="mr-2" /> Nazad
+          <Button
+            variant="outline"
+            onClick={handlePrev}
+            disabled={currentSectionIdx === 0}
+            className="rounded-xl px-4 sm:px-6 min-h-12"
+          >
+            <ChevronLeft size={18} className="sm:mr-2" aria-hidden="true" />
+            <span className="hidden sm:inline">Nazad</span>
           </Button>
 
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={handleSave} disabled={saveMutation.isPending} className="text-gray-500 hidden sm:flex min-h-12">
-              <Save size={18} className="mr-2" /> Sačuvaj
+            <Button
+              variant="ghost"
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+              aria-label="Sačuvaj i nastavi kasnije"
+              className="text-gray-600 min-h-12 rounded-xl px-3 sm:px-4"
+            >
+              <Save size={18} className="sm:mr-2" aria-hidden="true" />
+              <span className="hidden sm:inline">
+                {saveMutation.isPending ? 'Čuvam...' : 'Sačuvaj'}
+              </span>
             </Button>
             <Button
               onClick={handleNext}
               disabled={submitMutation.isPending || saveMutation.isPending}
-              className="bg-[#185e46] hover:bg-[#124a37] rounded-xl px-8 min-h-12"
+              className="bg-[#185e46] hover:bg-[#124a37] rounded-xl px-6 sm:px-8 min-h-12 text-base"
             >
               {currentSectionIdx === sections.length - 1
                 ? submitMutation.isPending
                   ? 'Slanje...'
                   : 'Završi i pošalji'
                 : 'Dalje'}
-              {currentSectionIdx !== sections.length - 1 && <ChevronRight size={18} className="ml-2" />}
+              {currentSectionIdx !== sections.length - 1 && (
+                <ChevronRight size={18} className="ml-1 sm:ml-2" aria-hidden="true" />
+              )}
             </Button>
           </div>
         </div>
+        <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-gray-500">
+          Možete sačuvati i vratiti se kasnije preko istog linka, dok se pregled ne zaključa.
+        </p>
       </footer>
     </div>
   );

@@ -11,14 +11,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileUp, File as FileIcon, CheckCircle2, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LAB_STATUS_PATIENT_OPTIONS } from '@/lib/labels';
 
-const LAB_OPTIONS = [
-  { value: 'uploaded_digitally', label: 'Otpremio/la sam digitalne nalaze' },
-  { value: 'will_bring_physical', label: 'Doneću fizičke nalaze na pregled' },
-  { value: 'results_pending', label: 'Nalazi još nisu gotovi' },
-  { value: 'no_results_available', label: 'Nemam dostupne nalaze' },
-  { value: 'not_required', label: 'Nisu potrebni za ovaj tip pregleda' },
-] as const;
+const LAB_OPTIONS = LAB_STATUS_PATIENT_OPTIONS;
 
 export default function PrepareDocuments() {
   const { token } = useParams();
@@ -118,9 +113,10 @@ export default function PrepareDocuments() {
     <div className="min-h-screen bg-gray-50 pb-28 pt-8">
       <main className="max-w-2xl mx-auto px-4">
         <div className="mb-8">
-          <h2 className="text-3xl font-serif text-[#185e46] mb-3">Laboratorijski nalazi</h2>
-          <p className="text-gray-600 text-lg">
-            Otpremite nalaze ili izaberite status. Nedostajući nalazi ne sprečavaju slanje pripreme.
+          <h2 className="text-2xl sm:text-3xl font-serif text-[#185e46] mb-3">Laboratorijski nalazi</h2>
+          <p className="text-gray-600 text-lg leading-relaxed">
+            Otpremite nalaze ako ih imate, ili samo izaberite status ispod. Bez nalaza ne možete biti
+            blokirani — pripremu možete poslati u svakom slučaju.
           </p>
         </div>
 
@@ -128,25 +124,28 @@ export default function PrepareDocuments() {
           <Alert className="mb-6 border-amber-200 bg-amber-50">
             <AlertTriangle className="h-4 w-4 text-amber-700" />
             <AlertTitle className="text-amber-900">Upozorenje o nalazima</AlertTitle>
-            <AlertDescription className="text-amber-800">
-              Za ovaj tip pregleda obično su potrebni skoriji laboratorijski nalazi. Bez njih, doktor možda neće moći da završi kompletnu procenu. Možete nastaviti ako dolazite iz drugog razloga ili ćete nalaze doneti lično.
+            <AlertDescription className="text-amber-800 leading-relaxed">
+              Za ovaj tip pregleda obično su potrebni skoriji laboratorijski nalazi. Bez njih doktor
+              možda neće moći da završi kompletnu procenu. Možete nastaviti ako dolazite iz drugog
+              razloga ili ćete nalaze doneti lično.
             </AlertDescription>
           </Alert>
         )}
 
-        <div className="bg-white border-2 border-dashed border-[#185e46]/20 rounded-3xl p-8 text-center mb-8 hover:bg-[#185e46]/5 transition-colors relative">
+        <div className="bg-white border-2 border-dashed border-[#185e46]/20 rounded-3xl p-6 sm:p-8 text-center mb-4 hover:bg-[#185e46]/5 transition-colors relative min-h-[11rem]">
           <input
             type="file"
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             onChange={handleFileUpload}
             disabled={isUploading}
             accept=".pdf,.jpg,.jpeg,.png"
+            aria-label="Dodaj dokument"
           />
           <div className="w-16 h-16 bg-[#185e46]/10 text-[#185e46] rounded-2xl flex items-center justify-center mx-auto mb-4">
             <FileUp size={32} />
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-1">Dodirnite da dodate dokument</h3>
-          <p className="text-sm text-gray-500">PDF, JPG, PNG (maksimalno 20MB)</p>
+          <p className="text-sm text-gray-500">PDF, JPG ili PNG (maksimalno 20MB)</p>
 
           {isUploading && (
             <div className="mt-4 flex items-center justify-center gap-2 text-[#185e46]">
@@ -155,6 +154,11 @@ export default function PrepareDocuments() {
             </div>
           )}
         </div>
+
+        <p className="mb-8 text-sm text-gray-500 leading-relaxed">
+          Savet: možete dodati više fajlova jedan po jedan. Slikajte nalaz telefonom ako nemate PDF —
+          važno je da se tekst vidi jasno i bez odsjaja.
+        </p>
 
         <div className="bg-white rounded-2xl border p-6 mb-8">
           <h3 className="font-medium text-gray-900 mb-4">Status nalaza</h3>
@@ -197,7 +201,10 @@ export default function PrepareDocuments() {
       </main>
 
       <footer className="fixed bottom-0 w-full bg-white border-t p-4 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
-        <div className="max-w-2xl mx-auto flex justify-end">
+        <div className="max-w-2xl mx-auto flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
+          <Button variant="outline" onClick={() => setLocation(`/prepare/${token}/questionnaire`)} className="rounded-xl px-6 py-6 text-base w-full sm:w-auto min-h-12">
+            Vrati se na upitnik
+          </Button>
           <Button onClick={handleFinish} className="bg-[#185e46] hover:bg-[#124a37] rounded-xl px-8 py-6 text-lg w-full sm:w-auto min-h-12">
             Završi pripremu <ChevronRight size={20} className="ml-2" />
           </Button>

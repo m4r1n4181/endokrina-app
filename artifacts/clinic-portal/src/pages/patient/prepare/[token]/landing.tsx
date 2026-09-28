@@ -6,13 +6,15 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { DateOfBirthField } from '@/components/date-of-birth-field';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Clock3, Link2Off, LoaderCircle, ShieldCheck, Stethoscope } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const dobSchema = z.object({
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format mora biti GGGG-MM-DD"),
+  dateOfBirth: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Izaberite dan, mesec i godinu rođenja.'),
 });
 
 export default function PrepareLanding() {
@@ -67,12 +69,20 @@ export default function PrepareLanding() {
       },
       onError: (err: any) => {
         const code = err?.data?.code;
+        const remaining = err?.data?.attemptsRemaining;
         const msg =
-          code === 'DOB_MISMATCH' ? 'Datum rođenja nije tačan. Proverite i pokušajte ponovo.' :
-          code === 'DOB_BLOCKED' || code === 'DOB_RATE_LIMITED' ? 'Previše pokušaja. Sačekajte i pokušajte kasnije.' :
-          code === 'LINK_INACTIVE' ? 'Link više nije aktivan. Kontaktirajte kliniku.' :
-          'Podaci nisu tačni ili je link istekao.';
-        toast({ title: 'Greška', description: msg, variant: 'destructive' });
+          code === 'DOB_MISMATCH'
+            ? `Datum rođenja se ne poklapa sa podacima klinike. Proverite unos i pokušajte ponovo.${
+                typeof remaining === 'number' ? ` Preostalo pokušaja: ${remaining}.` : ''
+              }`
+            : code === 'DOB_BLOCKED' || code === 'DOB_RATE_LIMITED'
+              ? 'Previše pokušaja u kratkom vremenu. Sačekajte nekoliko minuta i pokušajte ponovo, ili pozovite kliniku.'
+              : code === 'EMAIL_UNAVAILABLE'
+                ? 'Ne možemo da pošaljemo kod jer email adresa nije uneta. Pozovite kliniku da je dopuni.'
+                : code === 'LINK_INACTIVE' || code === 'LINK_EXPIRED'
+                  ? 'Link više nije aktivan. Pozovite kliniku da vam pošalje novi link.'
+                  : 'Podaci nisu tačni ili je link istekao. Proverite datum rođenja ili pozovite kliniku.';
+        toast({ title: 'Provera nije uspela', description: msg, variant: 'destructive' });
       }
     });
   };
@@ -136,10 +146,12 @@ export default function PrepareLanding() {
                 <FormItem>
                   <FormLabel className="text-gray-700 text-base">Datum rođenja</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="npr. 1980-05-15" 
-                      className="text-lg py-6 bg-gray-50 border-gray-200 focus:border-[#185e46] focus:ring-[#185e46]" 
-                      {...field} 
+                    <DateOfBirthField
+                      variant="patient"
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      disabled={field.disabled}
                     />
                   </FormControl>
                   <FormMessage />
