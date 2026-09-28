@@ -1,5 +1,10 @@
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { StaffLayout, AppointmentStatusBadge, LabStatusBadge } from '../dashboard';
+import { StaffLayout } from '../dashboard';
+import { AppointmentStatusBadge, LabStatusBadge, LabsWarningBadge } from '@/components/status-badges';
+import { AppointmentTypeSelect } from '@/components/appointment-type-select';
+import { AnswersPanel } from '@/components/answers-panel';
+import { SummaryPanel } from '@/components/summary-panel';
+import { DOCUMENT_TYPE_LABELS, appointmentTypeLabel, labelFor, questionnaireStatusLabel } from '@/lib/labels';
 import {
   useGetAppointment,
   useCancelAppointment,
@@ -16,6 +21,7 @@ import { srLatn } from 'date-fns/locale';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,6 +30,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { getDocumentDownload } from '@workspace/api-client-react';
+import { normalizePersonName } from '@/lib/person-name';
 import {
   Calendar,
   Clock,
@@ -34,28 +41,17 @@ import {
   AlertTriangle,
   FileBox,
   CheckCircle2,
-  Copy,
+  Stethoscope,
+  Lock,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-function formatAnswerValue(val: unknown): string {
-  if (Array.isArray(val)) {
-    if (val.length === 0) return '–';
-    if (typeof val[0] === 'object' && val[0] !== null) {
-      return val
-        .map((m) => {
-          const row = m as { name?: string; dose?: string; frequency?: string };
-          return [row.name, row.dose, row.frequency].filter(Boolean).join(' ');
-        })
-        .join('; ');
-    }
-    return val.join(', ');
-  }
-  if (typeof val === 'boolean') return val ? 'Da' : 'Ne';
-  if (val == null || val === '') return '–';
-  return String(val);
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
+
 
 export default function AppointmentDetail() {
   const { id } = useParams();
@@ -225,7 +221,7 @@ export default function AppointmentDetail() {
   const answers = appointment.questionnaire?.answers as Record<string, unknown> | undefined;
 
   return (
-    <StaffLayout title={`Termin: ${appointment.invitedFullName}`}>
+    <StaffLayout title={`Termin: ${normalizePersonName(appointment.invitedFullName)}`}>
       <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
         <Button variant="outline" size="sm" className="gap-2" onClick={() => window.history.back()}>
           <span aria-hidden="true">←</span>
@@ -242,17 +238,39 @@ export default function AppointmentDetail() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">{appointment.invitedFullName}</h2>
-          <div className="flex items-center gap-4 mt-2 text-gray-600 flex-wrap">
+          <h2 className="text-2xl font-bold text-gray-900">{normalizePersonName(appointment.invitedFullName)}</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-gray-600">
             <span className="flex items-center gap-1">
               <Calendar size={16} /> {format(new Date(appointment.scheduledAt), 'PPP', { locale: srLatn })}
             </span>
             <span className="flex items-center gap-1">
               <Clock size={16} /> {format(new Date(appointment.scheduledAt), 'HH:mm')}
             </span>
+            <span className="flex items-center gap-1">
+              <Stethoscope size={16} /> {appointmentTypeLabel(appointment.appointmentType)}
+            </span>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <AppointmentStatusBadge status={appointment.status} />
             <LabStatusBadge labStatus={appointment.labStatus} />
+            <LabsWarningBadge
+              appointmentType={appointment.appointmentType}
+              labStatus={appointment.labStatus}
+            />
+            {appointment.questionnaire && (
+              <Badge variant="outline" className="gap-1 border-gray-200 bg-gray-50 text-gray-700">
+                Priprema: {questionnaireStatusLabel(appointment.questionnaire.status)}
+              </Badge>
+            )}
           </div>
+
+          {appointment.status === 'locked' && (
+            <p className="mt-3 text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-2 max-w-xl">
+              Upitnik je zaključan jer je vreme pregleda počelo. Pacijent ne može da menja odgovore dok
+              ne otvorite upitnik ponovo. Klinički sadržaj ostaje samo za čitanje.
+            </p>
+          )}
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -315,9 +333,9 @@ export default function AppointmentDetail() {
             </div>
             <div>
               <Label>Tip pregleda</Label>
-              <Input
+              <AppointmentTypeSelect
                 value={editForm.appointmentType}
-                onChange={(e) => setEditForm((f) => ({ ...f, appointmentType: e.target.value }))}
+                onChange={(value) => setEditForm((f) => ({ ...f, appointmentType: value }))}
               />
             </div>
             <div>
@@ -348,11 +366,11 @@ export default function AppointmentDetail() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="text-gray-500">Tip pregleda:</span>
-                <span className="font-medium">{appointment.appointmentType}</span>
+                <span className="font-medium">{appointmentTypeLabel(appointment.appointmentType)}</span>
                 <span className="text-gray-500">Kontakt:</span>
                 <span className="font-medium">{appointment.invitedPhone}</span>
                 <span className="text-gray-500">Doktor:</span>
-                <span className="font-medium">{appointment.doctor?.fullName || '–'}</span>
+                <span className="font-medium">{appointment.doctor?.fullName ? normalizePersonName(appointment.doctor.fullName) : '–'}</span>
                 <span className="text-gray-500">Kreirano:</span>
                 <span className="font-medium">
                   {appointment.createdAt
@@ -378,7 +396,9 @@ export default function AppointmentDetail() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-green-700">
                     <CheckCircle2 size={20} />
-                    <span className="font-medium">Pokrenuto</span>
+                    <span className="font-medium">
+                      {questionnaireStatusLabel(appointment.questionnaire.status)}
+                    </span>
                   </div>
                   <div className="text-sm space-y-1">
                     <div className="flex justify-between">
@@ -435,57 +455,57 @@ export default function AppointmentDetail() {
           <Card className="rounded-t-none border-t-0 shadow-none border-x border-b mb-8">
             <CardContent className="p-6">
               <TabsContent value="summary" className="m-0 mt-0">
-                <p className="text-sm text-gray-500 mb-4">
-                  Deterministički sažeci iz pacijent-prijavljenih podataka — nisu AI i nisu zvaničan medicinski izveštaj.
+                <p className="mb-4 text-sm text-gray-500">
+                  Deterministički sažeci (bez AI) iz podataka koje je prijavio pacijent — nisu verifikovani
+                  od strane doktora i ne zamenjuju zvaničan medicinski izveštaj.
                 </p>
+
                 {summaries?.summaries && summaries.summaries.length > 0 ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {summaries.summaries.map((summary) => (
-                      <div key={summary.id} className="bg-gray-50 p-6 rounded-xl border border-gray-100">
-                        <div className="flex items-start justify-between gap-2 mb-4">
-                          <h4 className="font-semibold text-lg text-primary flex items-center gap-2">
-                            <FileText size={18} />
-                            {summary.variant === 'current_visit'
-                              ? 'Sažetak trenutne posete'
-                              : 'Sažetak + relevantna istorija'}
-                          </h4>
-                          <Button variant="ghost" size="icon" onClick={() => copyText(summary.content)}>
-                            <Copy size={16} />
-                          </Button>
-                        </div>
-                        <p className="text-xs text-gray-500 mb-3">
-                          Generisano: {format(new Date(summary.generatedAt), 'Pp', { locale: srLatn })}
-                        </p>
-                        <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">{summary.content}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <Tabs defaultValue="current_visit" className="w-full">
+                    <TabsList className="mb-4 grid w-full grid-cols-1 gap-1 bg-gray-50 sm:grid-cols-2">
+                      <TabsTrigger value="current_visit">Sažetak trenutne posete</TabsTrigger>
+                      <TabsTrigger value="current_visit_plus_history">Sažetak + relevantna istorija</TabsTrigger>
+                    </TabsList>
+
+                    {(['current_visit', 'current_visit_plus_history'] as const).map((variant) => {
+                      const summary = summaries.summaries.find((item) => item.variant === variant);
+                      return (
+                        <TabsContent key={variant} value={variant} className="m-0">
+                          {summary ? (
+                            <SummaryPanel summary={summary} />
+                          ) : (
+                            <div className="rounded-xl border border-dashed bg-gray-50 p-8 text-center text-sm text-gray-500">
+                              Ovaj sažetak još nije generisan. Pojaviće se kada pacijent sačuva ili pošalje
+                              pripremu.
+                            </div>
+                          )}
+                        </TabsContent>
+                      );
+                    })}
+                  </Tabs>
                 ) : (
                   <div className="text-center py-12 text-gray-500">
-                    <AlertTriangle className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                    <AlertTriangle className="mx-auto h-12 w-12 text-gray-300 mb-3" aria-hidden="true" />
                     <p>Sažetak će se pojaviti kada pacijent sačuva ili pošalje pripremu.</p>
                   </div>
                 )}
               </TabsContent>
 
               <TabsContent value="questionnaire" className="m-0 mt-0">
-                {answers && Object.keys(answers).length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-sm">
-                    {Object.entries(answers).map(([key, val]) => (
-                      <div key={key} className="border-b pb-3">
-                        <div className="text-gray-500 mb-1 capitalize">{key.replace(/_/g, ' ')}</div>
-                        <div className="font-medium whitespace-pre-wrap">{formatAnswerValue(val)}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <p>Pacijent još nije uneo odgovore.</p>
-                  </div>
-                )}
+                <p className="mb-4 text-sm text-gray-500">
+                  Sirovi odgovori pacijenta, grupisani po sekcijama upitnika. Pitanja bez odgovora su
+                  prikazana da nedostaci budu vidljivi, a ne skriveni.
+                </p>
+                <AnswersPanel answers={answers} />
               </TabsContent>
 
+
               <TabsContent value="documents" className="m-0 mt-0">
+                <p className="mb-4 flex items-center gap-2 text-sm text-gray-500">
+                  <Lock size={14} aria-hidden="true" />
+                  Pacijentovi dokumenti su samo za pregled i preuzimanje — doktor ih ne može menjati niti
+                  brisati.
+                </p>
                 {documentsData?.documents && documentsData.documents.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {documentsData.documents.map((doc) => (
@@ -500,7 +520,10 @@ export default function AppointmentDetail() {
                           <div className="min-w-0">
                             <p className="font-medium text-sm truncate">{doc.originalFileName}</p>
                             <p className="text-xs text-gray-500">
-                              {(doc.fileSizeBytes / 1024 / 1024).toFixed(2)} MB • {doc.mimeType}
+                              {formatFileSize(doc.fileSizeBytes)}
+                              {doc.documentType
+                                ? ` • ${labelFor(DOCUMENT_TYPE_LABELS, doc.documentType)}`
+                                : ` • ${doc.mimeType}`}
                             </p>
                           </div>
                         </div>

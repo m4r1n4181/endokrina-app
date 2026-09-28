@@ -11,6 +11,7 @@ import { requireStaffAuth } from "../middlewares/authenticate";
 import { staffOnly, requireRole } from "../middlewares/rbac";
 import { writeAuditLog, userAuditCtx } from "../services/audit";
 import { extractClientIp } from "../middlewares/audit-middleware";
+import { normalizePersonName } from "../lib/person-name";
 import argon2 from "argon2";
 import { z } from "zod";
 
@@ -34,7 +35,8 @@ router.post("/users", requireRole("doctor", "clinic_admin"), async (req, res, ne
       res.status(400).json({ error: "Invalid request", issues: parse.error.issues });
       return;
     }
-    const { email, password, role, fullName, phone } = parse.data;
+    const { email, password, role, phone } = parse.data;
+    const fullName = normalizePersonName(parse.data.fullName);
     const ip = extractClientIp(req);
     const userId = req.user!.sub;
 

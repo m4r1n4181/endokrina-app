@@ -10,6 +10,8 @@ export interface Patient {
   id: string;
   fullName: string;
   phone: string;
+  /** @nullable */
+  email?: string | null;
   dateOfBirth: string;
   /** @nullable */
   sex?: string | null;

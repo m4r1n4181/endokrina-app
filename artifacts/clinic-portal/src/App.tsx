@@ -14,7 +14,6 @@ import NewAppointment from '@/pages/staff/appointments/new';
 import AppointmentDetail from '@/pages/staff/appointments/[id]';
 import PatientHistory from '@/pages/staff/patients/[id]/history';
 import AdminStaffList from '@/pages/staff/admin/staff';
-import AdminAuditLog from '@/pages/staff/admin/audit';
 import StaffSecurity from '@/pages/staff/security';
 
 // Patient Pages
@@ -50,9 +49,6 @@ function Router() {
       </Route>
       <Route path="/admin/staff">
         <StaffGuard><AdminStaffList /></StaffGuard>
-      </Route>
-      <Route path="/admin/audit">
-        <StaffGuard><AdminAuditLog /></StaffGuard>
       </Route>
       <Route path="/security">
         <StaffGuard><StaffSecurity /></StaffGuard>

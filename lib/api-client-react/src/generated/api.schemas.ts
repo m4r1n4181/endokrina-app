@@ -132,6 +132,7 @@ export interface Patient {
   id: string;
   fullName: string;
   phone: string;
+  email?: string | null;
   dateOfBirth: string;
   /** @nullable */
   sex?: string | null;

@@ -15,14 +15,16 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Users, Shield, UserCircle, Activity } from 'lucide-react';
+import { Plus, Users, Shield, UserCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { staffRoleLabel } from '@/lib/labels';
+import { normalizePersonName } from '@/lib/person-name';
 
 const schema = z.object({
-  fullName: z.string().min(2, "Name required"),
-  email: z.string().email(),
-  password: z.string().min(12, "Min 12 chars"),
+  fullName: z.string().min(2, 'Ime i prezime su obavezni'),
+  email: z.string().email('Unesite ispravnu email adresu'),
+  password: z.string().min(12, 'Lozinka mora imati najmanje 12 karaktera'),
   role: z.enum(['doctor', 'clinic_admin', 'nurse']),
   phone: z.string().optional()
 });
@@ -47,9 +49,9 @@ export default function AdminStaffList() {
   });
 
   const onSubmit = (values: z.infer<typeof schema>) => {
-    createMutation.mutate({ data: values }, {
+    createMutation.mutate({ data: { ...values, fullName: normalizePersonName(values.fullName) } }, {
       onSuccess: () => {
-        toast({ title: 'User created' });
+        toast({ title: 'Nalog je kreiran', description: 'Osoblje se može prijaviti sa dodeljenom lozinkom.' });
         queryClient.invalidateQueries({ queryKey: getListStaffUsersQueryKey() });
         setOpen(false);
         form.reset();
@@ -113,6 +115,7 @@ export default function AdminStaffList() {
 
       <Card>
         <CardContent className="p-0">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-gray-50">
               <TableRow>
@@ -123,16 +126,23 @@ export default function AdminStaffList() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-gray-400">
+                    Nema kreiranih naloga.
+                  </TableCell>
+                </TableRow>
+              )}
               {rows.map((staff) => (
                 <TableRow key={staff.id}>
                   <TableCell>
-                    <div className="font-medium text-gray-900">{staff.fullName}</div>
+                    <div className="font-medium text-gray-900">{normalizePersonName(staff.fullName)}</div>
                     <div className="text-xs text-gray-500">{staff.email}</div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1 text-sm capitalize">
+                    <div className="flex items-center gap-1 text-sm">
                       {staff.role === 'clinic_admin' ? <Shield size={14} className="text-red-500" /> : <UserCircle size={14} className="text-blue-500" />}
-                      {staff.role.replace('_', ' ')}
+                      {staffRoleLabel(staff.role)}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -147,6 +157,7 @@ export default function AdminStaffList() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </StaffLayout>
