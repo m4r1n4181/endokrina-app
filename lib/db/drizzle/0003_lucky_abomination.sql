@@ -1,1 +1,0 @@
-ALTER TABLE "appointments" DROP COLUMN "invited_email";
