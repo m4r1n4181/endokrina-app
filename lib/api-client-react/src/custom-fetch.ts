@@ -376,8 +376,6 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  console.log("[customFetch HIT]", method, resolveUrl(input), body);
-  
   const response = await fetch(input, { ...init, body, method, headers });
 
   if (!response.ok) {
