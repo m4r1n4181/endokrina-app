@@ -104,24 +104,33 @@ jobs:
 
       - name: Deploy new image
         id: deploy
-        run: az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --image "$IMAGE" -o none
+        run: |
+          # Unique, readable revision name per commit: thyroid-demo-app--r<sha>
+          az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --image "$IMAGE" \
+            --revision-suffix "r${TAG}" -o none
 
       - name: Verify new revision
         run: |
           FQDN="$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)"
           for i in $(seq 1 40); do
-            LATEST="$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
-            READY="$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.latestReadyRevisionName -o tsv)"
+            # Active revision(s) and their image / health, straight from the revision list
+            ACTIVE="$(az containerapp revision list -n "$APP_NAME" -g "$RESOURCE_GROUP" \
+              --query "[?properties.active].[name, properties.template.containers[0].image, properties.healthState, properties.runningState]" -o tsv | tr '\t' '|')"
             CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://$FQDN/api/healthz" || true)"
-            echo "attempt $i: latest=$LATEST ready=$READY healthz=$CODE"
-            if [ -n "$LATEST" ] && [ "$LATEST" = "$READY" ] && [ "$CODE" = "200" ]; then
+            echo "attempt $i: healthz=$CODE active=[$(echo "$ACTIVE" | tr '\n' ' ')]"
+            if [ "$CODE" = "200" ] && echo "$ACTIVE" | grep -q "|$IMAGE|Healthy|Running"; then
               echo "Deployed $IMAGE to https://$FQDN"
               exit 0
             fi
+            if echo "$ACTIVE" | grep -q "|$IMAGE|Unhealthy|"; then
+              echo "New revision is Unhealthy."
+              break
+            fi
             sleep 15
           done
-          echo "New revision did not become healthy in time."
-          az containerapp logs show -n "$APP_NAME" -g "$RESOURCE_GROUP" --type system --tail 50 --follow false || true
+          echo "New revision did not become healthy in time. All revisions:"
+          az containerapp revision list -n "$APP_NAME" -g "$RESOURCE_GROUP" \
+            --query "[].{name:name,active:properties.active,image:properties.template.containers[0].image,health:properties.healthState,state:properties.runningState,created:properties.createdTime}" -o table || true
           exit 1
 
       - name: Roll back to previous image
