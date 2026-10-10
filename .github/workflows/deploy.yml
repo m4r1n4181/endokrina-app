@@ -1,0 +1,131 @@
+name: Deploy
+
+# Runs after the CI workflow succeeds for a push to main (i.e. after a PR is merged),
+# or manually from the Actions tab. Builds the image, applies committed migrations,
+# switches the Container App to the new image, and rolls back if the new revision is unhealthy.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # OIDC login to Azure (no stored Azure password)
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: thyroid-demo-rg
+  ACR_NAME: thyroiddemoacr
+  APP_NAME: thyroid-demo-app
+  PG_SERVER: thyroid-demo-db
+  IMAGE_REPO: endokrina
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Image tag = commit SHA
+        run: |
+          TAG="$(git rev-parse --short=12 HEAD)"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "IMAGE=${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${TAG}" >> "$GITHUB_ENV"
+          echo "FW_RULE=gh-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Remember currently running image (for rollback)
+        run: |
+          PREV="$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query 'properties.template.containers[0].image' -o tsv)"
+          echo "Currently running: $PREV"
+          echo "PREVIOUS_IMAGE=$PREV" >> "$GITHUB_ENV"
+
+      - name: Build and push image
+        run: |
+          az acr login -n "$ACR_NAME"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Open database firewall for this runner
+        run: |
+          IP="$(curl -s https://api.ipify.org)"
+          echo "Runner IP: $IP"
+          # az >= 2.86 uses -s for the server and -n for the rule; older versions use -n for the server.
+          if az postgres flexible-server firewall-rule create --help | grep -q -- '--server-name'; then
+            az postgres flexible-server firewall-rule create -g "$RESOURCE_GROUP" -s "$PG_SERVER" -n "$FW_RULE" \
+              --start-ip-address "$IP" --end-ip-address "$IP" -o none
+          else
+            az postgres flexible-server firewall-rule create -g "$RESOURCE_GROUP" -n "$PG_SERVER" --rule-name "$FW_RULE" \
+              --start-ip-address "$IP" --end-ip-address "$IP" -o none
+          fi
+
+      - name: Apply committed migrations
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: pnpm --filter @workspace/db migrate
+
+      - name: Close database firewall
+        if: always()
+        run: |
+          if az postgres flexible-server firewall-rule delete --help | grep -q -- '--server-name'; then
+            az postgres flexible-server firewall-rule delete -g "$RESOURCE_GROUP" -s "$PG_SERVER" -n "$FW_RULE" --yes -o none || true
+          else
+            az postgres flexible-server firewall-rule delete -g "$RESOURCE_GROUP" -n "$PG_SERVER" --rule-name "$FW_RULE" --yes -o none || true
+          fi
+
+      - name: Deploy new image
+        id: deploy
+        run: az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --image "$IMAGE" -o none
+
+      - name: Verify new revision
+        run: |
+          FQDN="$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)"
+          for i in $(seq 1 40); do
+            LATEST="$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
+            READY="$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.latestReadyRevisionName -o tsv)"
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://$FQDN/api/healthz" || true)"
+            echo "attempt $i: latest=$LATEST ready=$READY healthz=$CODE"
+            if [ -n "$LATEST" ] && [ "$LATEST" = "$READY" ] && [ "$CODE" = "200" ]; then
+              echo "Deployed $IMAGE to https://$FQDN"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "New revision did not become healthy in time."
+          az containerapp logs show -n "$APP_NAME" -g "$RESOURCE_GROUP" --type system --tail 50 --follow false || true
+          exit 1
+
+      - name: Roll back to previous image
+        if: failure() && steps.deploy.conclusion != 'skipped' && env.PREVIOUS_IMAGE != ''
+        run: |
+          echo "Rolling back to $PREVIOUS_IMAGE"
+          az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --image "$PREVIOUS_IMAGE" -o none
