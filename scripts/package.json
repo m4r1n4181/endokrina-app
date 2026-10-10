@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "hello": "tsx ./src/hello.ts",
     "setup-test-db": "tsx ./src/setup-test-db.ts",
     "ensure-storage-bucket": "tsx ./src/ensure-storage-bucket.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
