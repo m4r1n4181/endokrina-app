@@ -179,22 +179,22 @@ export function PatientAutocomplete({
         onKeyDown={handleKeyDown}
         onBlur={onBlur}
         className={cn(
-          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors',
-          'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          'flex h-11 w-full rounded-md border border-input bg-card px-3 py-2 text-base transition-colors',
+          'placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
           'disabled:cursor-not-allowed disabled:opacity-50'
         )}
       />
 
       {showSuggestions && (
-        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-md border bg-white shadow-lg">
-          <div className="flex items-center gap-2 border-b bg-gray-50 px-3 py-2 text-xs text-gray-500">
-            <UserRoundSearch size={14} aria-hidden="true" />
+        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-md border bg-popover shadow-md">
+          <div className="flex items-center gap-2 border-b bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+            <UserRoundSearch className="size-4" aria-hidden="true" />
             Postojeći pacijenti iz ranijih termina
-            {isLoading && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
+            {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
           </div>
 
           {matches.length === 0 ? (
-            <p className="px-3 py-3 text-sm text-gray-500">
+            <p className="px-3 py-3 text-base text-muted-foreground">
               Nema pronađenog pacijenta. Unesite podatke ručno — provera duplikata ostaje na kraju.
             </p>
           ) : (
@@ -209,12 +209,12 @@ export function PatientAutocomplete({
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => selectPatient(patient)}
                     className={cn(
-                      'flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm',
-                      index === activeIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      'flex min-h-11 w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-base',
+                      index === activeIndex ? 'bg-primary-soft' : 'hover:bg-muted'
                     )}
                   >
-                    <span className="font-medium text-gray-900">{normalizePersonName(patient.fullName)}</span>
-                    <span className="text-xs text-gray-500">
+                    <span className="font-medium text-foreground">{normalizePersonName(patient.fullName)}</span>
+                    <span className="text-sm text-muted-foreground">
                       {patient.phone ? `${patient.phone} · ` : ''}
                       poslednji termin{' '}
                       {new Date(patient.lastAppointmentAt).toLocaleDateString('sr-Latn-RS')} ·{' '}
@@ -229,7 +229,7 @@ export function PatientAutocomplete({
         </div>
       )}
 
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="mt-1.5 text-sm text-muted-foreground">
         Počnite da kucate ime ili telefon da izaberete postojećeg pacijenta.
       </p>
     </div>

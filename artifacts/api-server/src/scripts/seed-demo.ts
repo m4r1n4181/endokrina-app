@@ -18,13 +18,22 @@
  *   pnpm run db:seed:demo
  *
  * Refuses to run twice: if the demo doctor already exists, nothing is written.
+ *
+ * Reset (fresh dates, same fictional patients):
+ *   pnpm run db:seed:demo -- --reset          (local, reads .env)
+ *   scripts/reset-demo-prod.ps1                (production, reads env from Azure)
+ * Deletes ONLY the six demo patients (matched by their fictional phone numbers) and their
+ * appointments with the demo doctor — questionnaires, summaries, links and uploaded files —
+ * then inserts them again relative to today. Staff accounts, passwords and anything else
+ * (e.g. invitations visitors created) are left untouched. Needs only DEMO_ADMIN_EMAIL and
+ * DEMO_DOCTOR_EMAIL; the accounts must already exist.
  * Patients get no email address on purpose, so background jobs never email fictional people.
  */
 import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as argon2 from "argon2";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -33,10 +42,11 @@ import {
   preparationLinksTable,
   questionnairesTable,
   uploadedDocumentsTable,
+  summariesTable,
 } from "../lib/db";
 import { config } from "../lib/config";
 import { zonedMidnightUtc, clinicDay } from "../lib/clinic-time";
-import { saveDocument } from "../lib/document-storage";
+import { deleteDocument, saveDocument } from "../lib/document-storage";
 import { generateLinkToken } from "../services/patient-auth";
 import { generateSummaries } from "../services/summary";
 
@@ -126,8 +136,6 @@ function buildPatients(): DemoPatient[] {
               surgical_history: "",
               has_family_history: true,
               family_history_details: "Majka — hipotireoza (Hashimoto)",
-              communication_channel: "email",
-              document_preference: "digital",
             },
           },
           documents: [
@@ -160,9 +168,6 @@ function buildPatients(): DemoPatient[] {
               alcohol: "occasional",
               has_family_history: true,
               family_history_details: "Majka — hipotireoza (Hashimoto)",
-              communication_channel: "email",
-              needs_prep_guidance: false,
-              document_preference: "digital",
             },
           },
           documents: [
@@ -202,9 +207,6 @@ function buildPatients(): DemoPatient[] {
               smoking: "smoker",
               alcohol: "occasional",
               has_family_history: false,
-              communication_channel: "viber",
-              needs_prep_guidance: true,
-              document_preference: "digital",
             },
           },
           documents: [
@@ -246,8 +248,6 @@ function buildPatients(): DemoPatient[] {
               other_conditions: "Hipertenzija",
               has_family_history: true,
               family_history_details: "Otac — infarkt miokarda",
-              communication_channel: "sms",
-              document_preference: "both",
             },
           },
           documents: [
@@ -291,8 +291,6 @@ function buildPatients(): DemoPatient[] {
               surgical_history: "Totalna tireoidektomija (2025)",
               has_family_history: true,
               family_history_details: "Sestra — dijabetes tip 2",
-              communication_channel: "email",
-              document_preference: "digital",
             },
           },
           documents: [
@@ -353,29 +351,101 @@ async function upsertStaff(email: string, password: string, role: "clinic_admin"
   return { id: created.id, created: true };
 }
 
+const RESET = process.argv.includes("--reset");
+
+async function findUser(email: string) {
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  return user ?? null;
+}
+
+/** Removes the demo patients and everything hanging off their demo appointments. */
+async function deleteDemoPatients(doctorId: string): Promise<void> {
+  const phones = buildPatients().map((p) => p.phone);
+
+  const appointments = await db
+    .select({ id: appointmentsTable.id, patientId: appointmentsTable.patientId })
+    .from(appointmentsTable)
+    .where(and(eq(appointmentsTable.doctorId, doctorId), inArray(appointmentsTable.invitedPhone, phones)));
+  const appointmentIds = appointments.map((a) => a.id);
+  const patientIds = [...new Set(appointments.map((a) => a.patientId).filter((id): id is string => Boolean(id)))];
+
+  const storageKeys = appointmentIds.length
+    ? (
+        await db
+          .select({ storageKey: uploadedDocumentsTable.storageKey })
+          .from(uploadedDocumentsTable)
+          .where(inArray(uploadedDocumentsTable.appointmentId, appointmentIds))
+      ).map((d) => d.storageKey)
+    : [];
+
+  await db.transaction(async (tx) => {
+    if (appointmentIds.length) {
+      await tx.delete(uploadedDocumentsTable).where(inArray(uploadedDocumentsTable.appointmentId, appointmentIds));
+      await tx.delete(summariesTable).where(inArray(summariesTable.appointmentId, appointmentIds));
+      await tx.delete(questionnairesTable).where(inArray(questionnairesTable.appointmentId, appointmentIds));
+      await tx.delete(preparationLinksTable).where(inArray(preparationLinksTable.appointmentId, appointmentIds));
+      await tx.delete(appointmentsTable).where(inArray(appointmentsTable.id, appointmentIds));
+    }
+    // A demo patient row goes only if nothing else still points at it.
+    for (const patientId of patientIds) {
+      const [stillUsed] = await tx
+        .select({ id: appointmentsTable.id })
+        .from(appointmentsTable)
+        .where(eq(appointmentsTable.patientId, patientId))
+        .limit(1);
+      if (!stillUsed) await tx.delete(patientsTable).where(eq(patientsTable.id, patientId));
+    }
+  });
+
+  let removedFiles = 0;
+  for (const key of storageKeys) {
+    try {
+      await deleteDocument(key);
+      removedFiles++;
+    } catch (err) {
+      console.warn(`Could not delete stored file ${key}:`, err instanceof Error ? err.message : err);
+    }
+  }
+  console.log(`Removed ${appointmentIds.length} demo appointments, ${patientIds.length} patients, ${removedFiles} stored files.`);
+}
+
 async function seed() {
   const adminEmail = requireEnv("DEMO_ADMIN_EMAIL").toLowerCase();
-  const adminPassword = requireEnv("DEMO_ADMIN_PASSWORD", 12);
   const doctorEmail = requireEnv("DEMO_DOCTOR_EMAIL").toLowerCase();
-  const doctorPassword = requireEnv("DEMO_DOCTOR_PASSWORD", 12);
   if (adminEmail === doctorEmail) throw new Error("DEMO_ADMIN_EMAIL and DEMO_DOCTOR_EMAIL must be different");
 
-  const [existingDoctor] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, doctorEmail))
-    .limit(1);
-  if (existingDoctor) {
-    console.log(`Demo data already present (doctor ${doctorEmail} exists). Nothing to do.`);
-    return;
+  let admin: { id: string };
+  let doctor: { id: string };
+
+  if (RESET) {
+    const existingAdmin = await findUser(adminEmail);
+    const existingDoctor = await findUser(doctorEmail);
+    if (!existingAdmin || !existingDoctor) {
+      throw new Error("--reset needs the demo admin and doctor to exist. Run the seed once without --reset first.");
+    }
+    admin = existingAdmin;
+    doctor = existingDoctor;
+    console.log(`Reset: refreshing demo patients for ${doctorEmail}`);
+    console.log(`Storage: ${config.STORAGE_PROVIDER}${config.STORAGE_BUCKET ? ` (${config.STORAGE_BUCKET})` : ""}`);
+    await deleteDemoPatients(doctor.id);
+  } else {
+    const adminPassword = requireEnv("DEMO_ADMIN_PASSWORD", 12);
+    const doctorPassword = requireEnv("DEMO_DOCTOR_PASSWORD", 12);
+
+    if (await findUser(doctorEmail)) {
+      console.log(`Demo data already present (doctor ${doctorEmail} exists). Nothing to do. Use --reset for fresh dates.`);
+      return;
+    }
+
+    console.log(`Storage: ${config.STORAGE_PROVIDER}${config.STORAGE_BUCKET ? ` (${config.STORAGE_BUCKET})` : ""}`);
+
+    const createdAdmin = await upsertStaff(adminEmail, adminPassword, "clinic_admin", "Demo Administrator");
+    const createdDoctor = await upsertStaff(doctorEmail, doctorPassword, "doctor", "dr Demo Endokrinolog");
+    console.log(`Admin:  ${adminEmail} (${createdAdmin.created ? "created" : "already existed"})`);
+    console.log(`Doctor: ${doctorEmail} (created)`);
+    admin = createdAdmin;
+    doctor = createdDoctor;
   }
-
-  console.log(`Storage: ${config.STORAGE_PROVIDER}${config.STORAGE_BUCKET ? ` (${config.STORAGE_BUCKET})` : ""}`);
-
-  const admin = await upsertStaff(adminEmail, adminPassword, "clinic_admin", "Demo Administrator");
-  const doctor = await upsertStaff(doctorEmail, doctorPassword, "doctor", "dr Demo Endokrinolog");
-  console.log(`Admin:  ${adminEmail} (${admin.created ? "created" : "already existed"})`);
-  console.log(`Doctor: ${doctorEmail} (created)`);
 
   let documentCount = 0;
   const questionnaireAppointmentIds: string[] = [];

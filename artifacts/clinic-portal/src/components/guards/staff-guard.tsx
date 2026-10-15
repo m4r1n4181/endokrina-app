@@ -15,7 +15,7 @@ export function StaffGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading || !isAuthenticated) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-dvh w-full items-center justify-center bg-background">
         <Skeleton className="h-12 w-12 rounded-full" />
       </div>
     );

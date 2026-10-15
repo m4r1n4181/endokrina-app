@@ -6,14 +6,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { usePatientAuth } from '@/hooks/use-patient-auth';
 
 import { Button } from '@/components/ui/button';
-import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { Mail } from 'lucide-react';
+import { PatientCard, PatientShell, PatientTitle } from '@/components/layout/patient-shell';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 
 const otpSchema = z.object({
-  otp: z.string().length(6, "Potreban je kod od 6 cifara"),
+  otp: z.string().length(6, 'Unesite svih 6 cifara iz emaila.'),
 });
 
 export default function PrepareOtp() {
@@ -35,16 +35,16 @@ export default function PrepareOtp() {
   const handleResend = () => {
     resendMutation.mutate({ data: { token: token || '' } }, {
       onSuccess: () => {
-        toast({ title: 'Kod poslat', description: 'Proverite email (i spam folder).' });
+        toast({ title: 'Novi kod je poslat', description: 'Proverite email, i folder za neželjenu poštu (spam).' });
         setCooldown(60);
       },
       onError: (err: any) => {
         const retryAfter = err?.response?.data?.retryAfterSeconds;
         if (retryAfter) {
           setCooldown(retryAfter);
-          toast({ title: 'Sačekajte malo', description: `Možete zatražiti novi kod za ${retryAfter}s.` });
+          toast({ title: 'Sačekajte malo', description: `Novi kod možete zatražiti za ${retryAfter} sekundi.` });
         } else {
-          toast({ title: 'Greška', description: 'Pokušajte ponovo kasnije.', variant: 'destructive' });
+          toast({ title: 'Kod nije poslat', description: 'Pokušajte ponovo za minut, ili pozovite kliniku.', variant: 'destructive' });
         }
       }
     });
@@ -62,66 +62,67 @@ export default function PrepareOtp() {
         setLocation(`/prepare/${token}/consent`);
       },
       onError: () => {
-        toast({ title: 'Neispravan kod', description: 'Pokušajte ponovo.', variant: 'destructive' });
+        toast({ title: 'Kod nije tačan', description: 'Proverite cifre iz najnovijeg emaila i pokušajte ponovo.', variant: 'destructive' });
       }
     });
   };
 
   return (
-    <div className="min-h-screen bg-patient-portal-gradient flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 p-8 text-center">
-        <div className="mx-auto w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6">
-          <Mail size={32} />
-        </div>
-        
-        <h1 className="text-2xl font-serif text-[#185e46] mb-4">Potvrdite email adresu</h1>
-        <p className="text-gray-600 mb-8">
-          Poslali smo email sa 6-cifrenim kodom{maskedEmail ? ` na ${maskedEmail}` : ' na vašu email adresu'}.
-          Ako ga ne vidite, proverite i spam/junk folder.
+    <PatientShell>
+      <PatientCard>
+        <PatientTitle>Unesite kod iz emaila</PatientTitle>
+        <p className="mt-3 text-muted-foreground">
+          Poslali smo šestocifreni kod{maskedEmail ? ` na ${maskedEmail}` : ' na vašu email adresu'}. Ako ga ne vidite,
+          pogledajte i folder za neželjenu poštu (spam).
         </p>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 flex flex-col items-center">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-8">
             <FormField
               control={form.control}
               name="otp"
               render={({ field }) => (
-                <FormItem className="flex flex-col items-center">
+                <FormItem>
+                  <FormLabel className="text-lg">Kod</FormLabel>
                   <FormControl>
-                    <InputOTP maxLength={6} {...field}>
-                      <InputOTPGroup className="gap-2">
-                        <InputOTPSlot index={0} className="w-12 h-14 text-2xl border-gray-300 rounded-md" />
-                        <InputOTPSlot index={1} className="w-12 h-14 text-2xl border-gray-300 rounded-md" />
-                        <InputOTPSlot index={2} className="w-12 h-14 text-2xl border-gray-300 rounded-md" />
-                        <InputOTPSlot index={3} className="w-12 h-14 text-2xl border-gray-300 rounded-md" />
-                        <InputOTPSlot index={4} className="w-12 h-14 text-2xl border-gray-300 rounded-md" />
-                        <InputOTPSlot index={5} className="w-12 h-14 text-2xl border-gray-300 rounded-md" />
+                    <InputOTP maxLength={6} inputMode="numeric" autoComplete="one-time-code" {...field}>
+                      <InputOTPGroup className="w-full justify-between gap-2">
+                        {Array.from({ length: 6 }, (_, index) => (
+                          <InputOTPSlot key={index} index={index} className="h-14 w-auto min-w-0 flex-1 text-2xl" />
+                        ))}
                       </InputOTPGroup>
                     </InputOTP>
                   </FormControl>
-                  <FormMessage className="text-red-500 mt-2" />
+                  <FormMessage className="text-base" />
                 </FormItem>
               )}
             />
-            
-            <Button 
-              type="submit" 
-              className="w-full text-lg py-6 bg-[#185e46] hover:bg-[#124a37] text-white rounded-xl"
+
+            <Button
+              type="submit"
+              size="xl"
+              className="w-full"
               disabled={verifyMutation.isPending || form.watch('otp').length < 6}
             >
-              {verifyMutation.isPending ? 'Proveravam...' : 'Potvrdi'}
-            </Button>
-            <Button
-              type="button"
-              onClick={handleResend}
-              disabled={cooldown > 0 || resendMutation.isPending}
-              className="mt-4 text-sm text-[#185e46] underline disabled:text-gray-400 disabled:no-underline bg-transparent"
-            >
-              {cooldown > 0 ? `Pošalji ponovo (${cooldown}s)` : 'Niste dobili kod? Pošaljite ponovo'}
+              {verifyMutation.isPending ? 'Proveravam…' : 'Potvrdi kod'}
             </Button>
           </form>
         </Form>
-      </div>
-    </div>
+
+        <div className="mt-6 border-t pt-6">
+          <p className="text-muted-foreground">Kod nije stigao?</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="mt-3 w-full"
+            onClick={handleResend}
+            disabled={cooldown > 0 || resendMutation.isPending}
+          >
+            {cooldown > 0 ? `Pošalji ponovo za ${cooldown} s` : 'Pošalji novi kod'}
+          </Button>
+        </div>
+      </PatientCard>
+    </PatientShell>
   );
 }

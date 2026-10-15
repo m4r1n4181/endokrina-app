@@ -99,13 +99,13 @@ export function DateOfBirthField({
   const missing = missingDobParts(parts);
   const maxDay = daysInDobMonth(parts);
 
-  const triggerClass = isPatient ? 'h-14 text-base rounded-xl bg-gray-50 border-gray-200' : 'h-10';
-  const labelClass = isPatient ? 'text-sm text-gray-600' : 'text-xs text-gray-500';
+  const triggerClass = isPatient ? 'h-14 text-lg' : '';
+  const labelClass = isPatient ? 'text-base text-muted-foreground' : 'text-sm text-muted-foreground';
 
   /** Focus moves to the next dropdown once one is chosen, so three picks need no tapping around. */
   return (
     <div className={cn('space-y-1', className)} ref={ref} onBlur={onBlur} {...rest}>
-      <div className={cn('grid gap-2', isPatient ? 'grid-cols-3' : 'grid-cols-[5rem_1fr_6.5rem]')}>
+      <div className={cn('grid gap-2', isPatient ? 'grid-cols-[6rem_minmax(0,1fr)] gap-3 sm:grid-cols-[6rem_minmax(0,1fr)_8rem]' : 'grid-cols-[5rem_1fr_6.5rem]')}>
         <div className="space-y-1">
           <span className={labelClass}>Dan</span>
           <Select
@@ -156,7 +156,7 @@ export function DateOfBirthField({
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className={cn('space-y-1', isPatient && 'col-span-2 sm:col-span-1')}>
           <span className={labelClass}>Godina</span>
           <Select
             value={parts.year ? String(parts.year) : ''}
@@ -182,15 +182,15 @@ export function DateOfBirthField({
         </div>
       </div>
 
-      <p className={cn('text-xs', isPatient ? 'text-sm text-gray-600' : 'text-gray-500')}>
+      <p className={cn(isPatient ? 'text-base' : 'text-sm', 'text-muted-foreground')}>
         {composed
           ? `Izabrano: ${formatDateOfBirth(composed)}`
           : `Izaberite još ${missing.join(', ')} rođenja.`}
       </p>
 
       {/* The chosen month/year tells the user how many days that month actually has. */}
-      {parts.month && parts.year && maxDay < 31 && (
-        <p className={cn('text-xs', isPatient ? 'text-sm text-gray-500' : 'text-gray-400')}>
+      {!isPatient && parts.month && parts.year && maxDay < 31 && (
+        <p className="text-sm text-muted-foreground">
           {MONTH_NAMES[parts.month - 1]} {parts.year}. ima {maxDay} dana.
         </p>
       )}

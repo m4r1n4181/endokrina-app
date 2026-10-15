@@ -21,7 +21,8 @@ app.use(
         return {
           id: req.id,
           method: req.method,
-          url: req.url?.split("?")[0],
+          // Signed document links carry their token in the path — keep it out of the logs.
+          url: req.url?.split("?")[0]?.replace(/^\/api\/doctor\/files\/[^/]+/, "/api/doctor/files/[redacted]"),
         };
       },
       res(res) {

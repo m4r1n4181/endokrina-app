@@ -61,7 +61,7 @@ export const THYROID_QUESTIONNAIRE_V1: QuestionnaireSchema = {
   sections: [
     {
       id: "stable_profile",
-      title: "Lični podaci (prefilirani — proverite tačnost)",
+      title: "Lični podaci",
       questions: [
         {
           id: "full_name",
@@ -257,51 +257,25 @@ export const THYROID_QUESTIONNAIRE_V1: QuestionnaireSchema = {
         },
       ],
     },
-    {
-      id: "preferences",
-      title: "Vaše preference (opciono — ne utiče na pregled)",
-      questions: [
-        {
-          id: "communication_channel",
-          type: "single_choice",
-          label: "Preferiran kanal komunikacije za obaveštenja",
-          required: false,
-          options: [
-            { value: "viber", label: "Viber" },
-            { value: "sms", label: "SMS" },
-            { value: "email", label: "Email" },
-          ],
-        },
-        {
-          id: "needs_prep_guidance",
-          type: "boolean",
-          label: "Da li želite uputstvo šta da donesete na pregled?",
-          required: false,
-        },
-        {
-          id: "needs_digital_help",
-          type: "boolean",
-          label: "Da li vam je potrebna pomoć sa popunjavanjem ovog formulara?",
-          required: false,
-        },
-        {
-          id: "document_preference",
-          type: "single_choice",
-          label: "Donosite li nalaze u digitalnom ili fizičkom obliku?",
-          required: false,
-          options: [
-            { value: "digital", label: "Digitalno (fajl)" },
-            { value: "physical", label: "Fizički primerak" },
-            { value: "both", label: "I jedno i drugo" },
-          ],
-        },
-      ],
-    },
   ],
 };
 
+/**
+ * Questions removed from the form that may still exist in drafts saved before the removal.
+ * They are still ACCEPTED on save (so an older draft never fails with INVALID_FIELDS) but no
+ * longer asked. The "preferences" section was removed because none of its answers changed
+ * anything: preparation guidance is now shown to every patient before the questionnaire,
+ * help is offered on every screen, and the lab/document choice is made on the upload step.
+ */
+export const RETIRED_QUESTION_IDS: readonly string[] = [
+  "communication_channel",
+  "needs_prep_guidance",
+  "needs_digital_help",
+  "document_preference",
+];
+
 export function getAllowedQuestionIds(schema: QuestionnaireSchema): Set<string> {
-  const ids = new Set<string>();
+  const ids = new Set<string>(RETIRED_QUESTION_IDS);
   for (const section of schema.sections) {
     for (const q of section.questions) ids.add(q.id);
   }

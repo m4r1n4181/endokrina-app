@@ -1,10 +1,17 @@
 /**
- * Shared status/lab badges (UX requirements, table 4 — dashboard status badges).
+ * Shared status/lab badges (UX requirements, table 6 — dashboard status badges).
  * Every badge renders a Serbian label; raw enum values are never shown.
  * Used on the dashboard, appointment detail and patient history so the colours,
  * icons and wording stay consistent everywhere.
+ *
+ * Colour comes only from the theme's semantic pairs:
+ *   neutral  — nothing to act on (not opened, locked, not required)
+ *   info     — patient is working on it
+ *   success  — done / documents uploaded
+ *   warning  — labs may be missing, rescheduled
+ *   danger   — cancelled
  */
-import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
@@ -12,6 +19,7 @@ import {
   CheckCircle2,
   Clock,
   FileCheck2,
+  FileText,
   FolderInput,
   Hourglass,
   Lock,
@@ -20,7 +28,6 @@ import {
   RotateCcw,
   Send,
   XCircle,
-  FileText,
 } from 'lucide-react';
 import {
   APPOINTMENT_STATUS_LABELS,
@@ -31,16 +38,26 @@ import {
   labelFor,
 } from '@/lib/labels';
 
-const STATUS_STYLES: Record<string, string> = {
-  draft_invitation: 'border-gray-200 bg-gray-50 text-gray-600',
-  link_sent: 'border-gray-200 bg-gray-50 text-gray-700',
-  opened: 'border-blue-200 bg-blue-50 text-blue-800',
-  in_progress: 'border-blue-200 bg-blue-50 text-blue-800',
-  submitted: 'border-green-200 bg-green-50 text-green-800',
-  locked: 'border-primary/30 bg-primary/5 text-primary',
-  reopened: 'border-blue-200 bg-blue-50 text-blue-800',
-  rescheduled: 'border-amber-200 bg-amber-50 text-amber-800',
-  cancelled: 'border-red-200 bg-red-50 text-red-700',
+export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+
+export const TONE_CLASSES: Record<Tone, string> = {
+  neutral: 'border-border bg-muted text-muted-foreground',
+  info: 'border-info-border bg-info-soft text-info',
+  success: 'border-success-border bg-success-soft text-success',
+  warning: 'border-warning-border bg-warning-soft text-warning',
+  danger: 'border-destructive-border bg-destructive-soft text-destructive',
+};
+
+const STATUS_TONES: Record<string, Tone> = {
+  draft_invitation: 'neutral',
+  link_sent: 'neutral',
+  opened: 'info',
+  in_progress: 'info',
+  submitted: 'success',
+  locked: 'neutral',
+  reopened: 'info',
+  rescheduled: 'warning',
+  cancelled: 'danger',
 };
 
 const STATUS_ICONS: Record<string, typeof Clock> = {
@@ -55,34 +72,45 @@ const STATUS_ICONS: Record<string, typeof Clock> = {
   cancelled: XCircle,
 };
 
-export function AppointmentStatusBadge({
-  status,
+export function StatusBadge({
+  tone,
+  icon: Icon,
+  label,
+  title,
   className,
 }: {
-  status: string;
+  tone: Tone;
+  icon?: typeof Clock;
+  label: string;
+  title?: string;
   className?: string;
 }) {
-  const Icon = STATUS_ICONS[status] ?? Clock;
-  const meaning = APPOINTMENT_STATUS_MEANINGS[status];
-
   return (
-    <Badge
-      variant="outline"
-      title={meaning}
-      className={cn('gap-1', STATUS_STYLES[status] ?? 'border-gray-200 bg-gray-50 text-gray-600', className)}
-    >
-      <Icon size={12} aria-hidden="true" />
-      {labelFor(APPOINTMENT_STATUS_LABELS, status)}
+    <Badge variant="outline" title={title} className={cn(TONE_CLASSES[tone], className)}>
+      {Icon && <Icon aria-hidden="true" />}
+      {label}
     </Badge>
   );
 }
 
-const LAB_STYLES: Record<string, string> = {
-  uploaded_digitally: 'border-green-200 bg-green-50 text-green-800',
-  will_bring_physical: 'border-blue-200 bg-blue-50 text-blue-800',
-  results_pending: 'border-amber-200 bg-amber-50 text-amber-800',
-  no_results_available: 'border-amber-200 bg-amber-50 text-amber-800',
-  not_required: 'border-gray-200 bg-gray-50 text-gray-600',
+export function AppointmentStatusBadge({ status, className }: { status: string; className?: string }) {
+  return (
+    <StatusBadge
+      tone={STATUS_TONES[status] ?? 'neutral'}
+      icon={STATUS_ICONS[status] ?? Clock}
+      label={labelFor(APPOINTMENT_STATUS_LABELS, status)}
+      title={APPOINTMENT_STATUS_MEANINGS[status]}
+      className={className}
+    />
+  );
+}
+
+const LAB_TONES: Record<string, Tone> = {
+  uploaded_digitally: 'success',
+  will_bring_physical: 'info',
+  results_pending: 'warning',
+  no_results_available: 'warning',
+  not_required: 'neutral',
 };
 
 const LAB_ICONS: Record<string, typeof Clock> = {
@@ -93,76 +121,45 @@ const LAB_ICONS: Record<string, typeof Clock> = {
   not_required: MinusCircle,
 };
 
-export function LabStatusBadge({
-  labStatus,
-  className,
-}: {
-  labStatus?: string | null;
-  className?: string;
-}) {
+export function LabStatusBadge({ labStatus, className }: { labStatus?: string | null; className?: string }) {
   if (!labStatus) return null;
-  const Icon = LAB_ICONS[labStatus] ?? FileText;
-
   return (
-    <Badge
-      variant="outline"
+    <StatusBadge
+      tone={LAB_TONES[labStatus] ?? 'neutral'}
+      icon={LAB_ICONS[labStatus] ?? FileText}
+      label={labelFor(LAB_STATUS_LABELS, labStatus)}
       title={LAB_STATUS_MEANINGS[labStatus]}
-      className={cn('gap-1', LAB_STYLES[labStatus] ?? 'border-gray-200 bg-gray-50 text-gray-600', className)}
-    >
-      <Icon size={12} aria-hidden="true" />
-      {labelFor(LAB_STATUS_LABELS, labStatus)}
-    </Badge>
+      className={className}
+    />
   );
 }
+
+export const LABS_WARNING_MESSAGE =
+  'Za ovaj tip pregleda obično su potrebni skoriji laboratorijski nalazi. Bez njih doktor možda neće moći da završi kompletnu procenu.';
 
 /**
  * "Strong warning" badge — labs (possibly) missing for an appointment type that needs them.
  * Copy is deliberately calm: it explains the consequence, it does not block anything.
+ * Shown only when the lab status itself does not already say so (no duplicate badges).
  */
 export function LabsWarningBadge({
   appointmentType,
   labStatus,
   className,
-  variant = 'badge',
 }: {
   appointmentType?: string | null;
   labStatus?: string | null;
   className?: string;
-  variant?: 'badge' | 'inline';
 }) {
-  if (!hasLabsWarning(appointmentType, labStatus)) return null;
-
-  const message =
-    'Za ovaj tip pregleda obično su potrebni skoriji laboratorijski nalazi. Bez njih doktor možda neće moći da završi kompletnu procenu.';
-
-  if (variant === 'inline') {
-    return (
-      <div className={cn('flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900', className)}>
-        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-700" aria-hidden="true" />
-        <div>
-          <p className="font-medium">Upozorenje: nalazi možda nedostaju</p>
-          <p className="text-amber-800">{message}</p>
-        </div>
-      </div>
-    );
-  }
-
+  // A pending / "no results" lab status is already shown in warning colour by LabStatusBadge.
+  if (!hasLabsWarning(appointmentType, labStatus) || labStatus) return null;
   return (
-    <Badge
-      variant="outline"
-      title={message}
-      className={cn('gap-1 border-amber-300 bg-amber-50 text-amber-900', className)}
-    >
-      <AlertTriangle size={12} aria-hidden="true" />
-      Nalazi nedostaju
-    </Badge>
-  );
-}
-
-export function InfoBadge({ label, className, ...props }: { label: string; className?: string } & BadgeProps) {
-  return (
-    <Badge variant="outline" className={cn('gap-1 border-gray-200 bg-gray-50 text-gray-700', className)} {...props}>
-      {label}
-    </Badge>
+    <StatusBadge
+      tone="warning"
+      icon={AlertTriangle}
+      label="Nalazi nedostaju"
+      title={LABS_WARNING_MESSAGE}
+      className={className}
+    />
   );
 }

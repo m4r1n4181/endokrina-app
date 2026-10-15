@@ -80,7 +80,7 @@ export function hasLabsWarning(appointmentType?: string | null, labStatus?: stri
 
 export const APPOINTMENT_STATUS_LABELS: LabelMap = {
   draft_invitation: 'Nacrt',
-  link_sent: 'Link poslat',
+  link_sent: 'Nije otvoreno',
   opened: 'Otvoreno',
   in_progress: 'U toku',
   submitted: 'Poslato',
@@ -113,7 +113,7 @@ export function appointmentStatusLabel(value?: string | null): string {
 
 export const LAB_STATUS_LABELS: LabelMap = {
   uploaded_digitally: 'Nalazi otpremljeni',
-  will_bring_physical: 'Doneće fizički',
+  will_bring_physical: 'Donosi lično',
   results_pending: 'Nalazi na čekanju',
   no_results_available: 'Nema nalaza',
   not_required: 'Nije potrebno',
@@ -129,8 +129,8 @@ export const LAB_STATUS_MEANINGS: LabelMap = {
 
 /** Patient-facing wording (first person), used on the upload step. */
 export const LAB_STATUS_PATIENT_OPTIONS: SelectOption[] = [
-  { value: 'uploaded_digitally', label: 'Otpremio/la sam digitalne nalaze' },
-  { value: 'will_bring_physical', label: 'Doneću fizičke nalaze na pregled' },
+  { value: 'uploaded_digitally', label: 'Dodao/la sam nalaze ovde' },
+  { value: 'will_bring_physical', label: 'Doneću nalaze lično na pregled' },
   { value: 'results_pending', label: 'Nalazi još nisu gotovi' },
   { value: 'no_results_available', label: 'Nemam dostupne nalaze' },
   { value: 'not_required', label: 'Nisu potrebni za ovaj tip pregleda' },
@@ -216,7 +216,6 @@ export const QUESTIONNAIRE_SECTION_TITLES: LabelMap = {
   allergies: 'Alergije',
   lifestyle: 'Navike',
   medical_history: 'Lična i porodična anamneza',
-  preferences: 'Vaše preference',
 };
 
 export const QUESTION_LABELS: LabelMap = {
@@ -240,10 +239,6 @@ export const QUESTION_LABELS: LabelMap = {
   surgical_history: 'Operacije',
   has_family_history: 'Porodična anamneza',
   family_history_details: 'Detalji porodične anamneze',
-  communication_channel: 'Preferiran kanal komunikacije',
-  needs_prep_guidance: 'Želi uputstvo šta doneti na pregled',
-  needs_digital_help: 'Potrebna pomoć sa popunjavanjem formulara',
-  document_preference: 'Nalazi u digitalnom ili fizičkom obliku',
 };
 
 /** Labels for option values that can appear without a loaded schema. */

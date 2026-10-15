@@ -9,13 +9,12 @@ import { format } from 'date-fns';
 import { srLatn } from 'date-fns/locale';
 import type { Summary } from '@workspace/api-client-react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { SUMMARY_VARIANT_HINTS, SUMMARY_VARIANT_LABELS, labelFor } from '@/lib/labels';
 import { countMissingLines, getSummaryLines, normalizeSummaryContent } from '@/lib/summary';
-import { AlertTriangle, Check, Copy, FileText, Info } from 'lucide-react';
+import { AlertTriangle, Check, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function SummaryPanel({ summary, className }: { summary: Summary; className?: string }) {
@@ -40,45 +39,32 @@ export function SummaryPanel({ summary, className }: { summary: Summary; classNa
   };
 
   return (
-    <section className={cn('rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-6', className)}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <section className={cn('rounded-lg border bg-card', className)}>
+      <header className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-start sm:justify-between md:px-6">
         <div className="min-w-0">
-          <h4 className="flex items-center gap-2 font-serif text-lg font-semibold text-primary">
-            <FileText size={18} aria-hidden="true" />
-            {variantLabel}
-          </h4>
-          {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+          <h3 className="text-lg font-semibold">{variantLabel}</h3>
+          {hint && <p className="mt-0.5 text-base text-muted-foreground">{hint}</p>}
+          <p className="mt-2 text-sm text-muted-foreground">
+            Generisano {format(new Date(summary.generatedAt), "d. MMM yyyy. 'u' HH:mm", { locale: srLatn })}
+            {summary.templateVersion ? ` · šablon ${summary.templateVersion}` : ''} · iz podataka koje je prijavio
+            pacijent, nije proverio doktor
+          </p>
         </div>
         <Button
           type="button"
           variant={copied ? 'outline' : 'default'}
           onClick={handleCopy}
-          className="gap-2"
+          className="shrink-0"
           aria-label={`Kopiraj: ${variantLabel}`}
         >
-          {copied ? <Check size={16} /> : <Copy size={16} />}
+          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
           {copied ? 'Kopirano' : 'Kopiraj sažetak'}
         </Button>
       </header>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-        <Badge variant="outline" className="border-gray-200 bg-white text-gray-600">
-          Generisano: {format(new Date(summary.generatedAt), 'd. MMM yyyy. HH:mm', { locale: srLatn })}
-        </Badge>
-        {summary.templateVersion && (
-          <Badge variant="outline" className="border-gray-200 bg-white text-gray-600">
-            Šablon: {summary.templateVersion}
-          </Badge>
-        )}
-        <span className="flex items-center gap-1">
-          <Info size={12} aria-hidden="true" />
-          Automatski sažetak iz podataka koje je pacijent prijavio — nije verifikovan od strane doktora.
-        </span>
-      </div>
-
       {missingCount > 0 && (
-        <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <p className="mx-4 mt-4 flex items-start gap-2 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base md:mx-6">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden="true" />
           {missingCount === 1
             ? 'Jedna stavka u sažetku nema podatke pacijenta (označeno je ispod).'
             : `${missingCount} stavki u sažetku nemaju podatke pacijenta (označene su ispod).`}{' '}
@@ -86,27 +72,28 @@ export function SummaryPanel({ summary, className }: { summary: Summary; classNa
         </p>
       )}
 
-      <div className="mt-4 whitespace-pre-wrap rounded-lg border border-gray-200 bg-white p-4 font-serif text-sm leading-relaxed text-gray-800">
+      <div className="space-y-1 whitespace-pre-wrap px-4 py-5 text-base leading-relaxed md:px-6">
         {lines.map((line, index) => {
-          if (!line.text) return <span key={index}>{'\n'}</span>;
+          // Blank lines only separate blocks; headings already carry their own space above.
+          if (!line.text) return null;
           if (line.type === 'heading') {
             return (
-              <p key={index} className="mt-4 first:mt-0 text-sm font-semibold uppercase tracking-wide text-primary">
+              <p key={index} className="mt-5 text-base font-semibold first:mt-0">
                 {line.text}
               </p>
             );
           }
           if (line.type === 'missing') {
             return (
-              <p key={index} className="flex items-start gap-1.5 text-amber-800">
-                <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <p key={index} className="flex items-start gap-1.5 text-warning">
+                <AlertTriangle className="mt-1 size-4 shrink-0" aria-hidden="true" />
                 <span className="italic">{line.text}</span>
               </p>
             );
           }
           if (line.type === 'doctor-note') {
             return (
-              <p key={index} className="italic text-gray-400">
+              <p key={index} className="italic text-muted-foreground">
                 {line.text}
               </p>
             );

@@ -239,6 +239,27 @@ export function flattenAnswers(
   return flat;
 }
 
+/**
+ * Questions removed from the form (mirrors RETIRED_QUESTION_IDS in the API schema).
+ * Older drafts may still carry them; they are neither shown nor sent back.
+ */
+export const RETIRED_QUESTION_IDS = new Set([
+  'communication_channel',
+  'needs_prep_guidance',
+  'needs_digital_help',
+  'document_preference',
+]);
+
+/** Keeps only answers to questions the current schema asks (drops retired / unknown keys). */
+export function answersForSchema(
+  schema: QuestionnaireSchema | undefined,
+  answers: Record<string, unknown>
+): Record<string, unknown> {
+  if (!schema) return answers;
+  const asked = new Set(schema.sections.flatMap((section) => section.questions.map((question) => question.id)));
+  return Object.fromEntries(Object.entries(answers).filter(([key]) => asked.has(key)));
+}
+
 /** Groups answers by questionnaire section, keeping unanswered questions visible. */
 export function groupAnswers(
   schema: QuestionnaireSchema | undefined,
@@ -268,7 +289,7 @@ export function groupAnswers(
   }
 
   const extraEntries: AnswerEntry[] = Object.entries(flat)
-    .filter(([key]) => !known.has(key))
+    .filter(([key]) => !known.has(key) && !RETIRED_QUESTION_IDS.has(key))
     .map(([key, value]) => {
       const formatted = formatAnswer(schema, key, value);
       return {

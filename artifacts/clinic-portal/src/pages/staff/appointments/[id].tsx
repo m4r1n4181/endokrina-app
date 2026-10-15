@@ -1,10 +1,11 @@
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { StaffLayout } from '../dashboard';
-import { AppointmentStatusBadge, LabStatusBadge, LabsWarningBadge } from '@/components/status-badges';
+import { StaffLayout, PageHeader } from '@/components/layout/staff-layout';
+import { AppointmentStatusBadge, LabStatusBadge, LABS_WARNING_MESSAGE, StatusBadge, type Tone } from '@/components/status-badges';
+import { EmptyState } from '@/components/empty-state';
 import { AppointmentTypeSelect } from '@/components/appointment-type-select';
 import { AnswersPanel } from '@/components/answers-panel';
 import { SummaryPanel } from '@/components/summary-panel';
-import { DOCUMENT_TYPE_LABELS, appointmentTypeLabel, labelFor, questionnaireStatusLabel } from '@/lib/labels';
+import { DOCUMENT_TYPE_LABELS, appointmentTypeLabel, hasLabsWarning, labelFor, questionnaireStatusLabel } from '@/lib/labels';
 import {
   useGetAppointment,
   useCancelAppointment,
@@ -16,13 +17,24 @@ import {
   getGetAppointmentQueryKey,
 } from '@workspace/api-client-react';
 import { useParams, Link } from 'wouter';
+import type { ReactNode } from 'react';
 import { format } from 'date-fns';
 import { srLatn } from 'date-fns/locale';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -32,20 +44,28 @@ import { copyTextToClipboard } from '@/lib/clipboard';
 import { getDocumentDownload } from '@workspace/api-client-react';
 import { normalizePersonName } from '@/lib/person-name';
 import {
-  Calendar,
-  Clock,
-  FileText,
   Activity,
-  Link as LinkIcon,
-  Download,
   AlertTriangle,
-  FileBox,
-  CheckCircle2,
-  Stethoscope,
+  Download,
+  ExternalLink,
+  FileText,
+  Link as LinkIcon,
   Lock,
+  Pencil,
+  RotateCcw,
+  XCircle,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+const QUESTIONNAIRE_TONES: Record<string, Tone> = {
+  not_started: 'neutral',
+  consent_given: 'info',
+  in_progress: 'info',
+  saved: 'info',
+  submitted: 'success',
+  locked: 'neutral',
+};
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -91,16 +111,32 @@ export default function AppointmentDetail() {
 
   if (isLoading) {
     return (
-      <StaffLayout title="Detalj termina">
-        <Skeleton className="h-[600px] w-full" />
+      <StaffLayout>
+        <div className="space-y-4" aria-busy="true" aria-label="Učitavanje termina">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-10 w-72 max-w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-96 w-full" />
+        </div>
       </StaffLayout>
     );
   }
 
   if (!appointment) {
     return (
-      <StaffLayout title="Nije pronađeno">
-        <p>Termin nije pronađen.</p>
+      <StaffLayout>
+        <PageHeader back={{ href: '/dashboard', label: 'Dnevni pregled' }} title="Termin nije pronađen" />
+        <Card>
+          <EmptyState
+            title="Ovaj termin ne postoji ili vam nije dostupan"
+            description="Možda je obrisan, ili je link pogrešan. Vratite se na pregled termina."
+            action={
+              <Button asChild variant="outline">
+                <Link href="/dashboard">Nazad na dnevni pregled</Link>
+              </Button>
+            }
+          />
+        </Card>
       </StaffLayout>
     );
   }
@@ -133,23 +169,24 @@ export default function AppointmentDetail() {
           setEditing(false);
           queryClient.invalidateQueries({ queryKey: getGetAppointmentQueryKey(appointment.id) });
         },
-        onError: () => toast({ title: 'Greška pri čuvanju', variant: 'destructive' }),
+        onError: () =>
+          toast({ title: 'Izmene nisu sačuvane', description: 'Proverite datum i telefon pa pokušajte ponovo.', variant: 'destructive' }),
       }
     );
   };
 
   const handleCancel = () => {
-    if (confirm('Otkazati ovaj termin? Link će biti deaktiviran.')) {
-      cancelMutation.mutate(
-        { id: appointment.id },
-        {
-          onSuccess: () => {
-            toast({ title: 'Termin otkazan' });
-            queryClient.invalidateQueries({ queryKey: getGetAppointmentQueryKey(appointment.id) });
-          },
-        }
-      );
-    }
+    cancelMutation.mutate(
+      { id: appointment.id },
+      {
+        onSuccess: () => {
+          toast({ title: 'Termin je otkazan', description: 'Link za pripremu više ne radi.' });
+          queryClient.invalidateQueries({ queryKey: getGetAppointmentQueryKey(appointment.id) });
+        },
+        onError: () =>
+          toast({ title: 'Otkazivanje nije uspelo', description: 'Pokušajte ponovo za nekoliko trenutaka.', variant: 'destructive' }),
+      }
+    );
   };
 
   const handleResend = () => {
@@ -157,9 +194,10 @@ export default function AppointmentDetail() {
       { id: appointment.id },
       {
         onSuccess: (res) => {
-          toast({ title: 'Link generisan' });
+          toast({ title: 'Novi link je poslat pacijentu' });
           if (res.linkUrl) setMagicLink(res.linkUrl);
         },
+        onError: () => toast({ title: 'Link nije poslat', description: 'Pokušajte ponovo.', variant: 'destructive' }),
       }
     );
   };
@@ -168,8 +206,9 @@ export default function AppointmentDetail() {
     reopenMutation.mutate(
       { id: appointment.id },
       {
+        onError: () => toast({ title: 'Upitnik nije otvoren', description: 'Pokušajte ponovo.', variant: 'destructive' }),
         onSuccess: () => {
-          toast({ title: 'Upitnik ponovo otvoren' });
+          toast({ title: 'Upitnik je ponovo otvoren', description: 'Pacijent može da menja odgovore.' });
           queryClient.invalidateQueries({ queryKey: getGetAppointmentQueryKey(appointment.id) });
         },
       }
@@ -186,368 +225,414 @@ export default function AppointmentDetail() {
   };
 
   const openDocument = async (docId: string, disposition: 'inline' | 'attachment') => {
+    // The server hands back a short-lived signed link — a plain URL, so every browser can open
+    // or save it, iPhone included (it cannot open the in-memory blob links used before).
+    // Phones: open in this tab (back returns here). Desktop: a new tab, opened inside the click
+    // so it is not treated as a pop-up, then pointed at the file once the link arrives.
+    const isPhone = window.matchMedia('(pointer: coarse)').matches;
+    const viewWindow = disposition === 'inline' && !isPhone ? window.open('', '_blank') : null;
+
     try {
       const downloadInfo = await getDocumentDownload(id || '', docId);
       if (!downloadInfo.downloadUrl) {
         throw new Error('Missing download URL');
       }
+      const fileUrl = `${downloadInfo.downloadUrl}?disposition=${disposition}`;
 
-      const fileResponse = await fetch(`${downloadInfo.downloadUrl}?disposition=${disposition}`);
-      if (!fileResponse.ok) {
-        throw new Error('Failed to load document');
-      }
-
-      const fileBlob = await fileResponse.blob();
-      const objectUrl = URL.createObjectURL(fileBlob);
-      if (disposition === 'inline') {
-        const viewWindow = window.open(objectUrl, '_blank', 'noopener,noreferrer');
-        if (!viewWindow) {
-          throw new Error('Popup blocked');
-        }
+      if (viewWindow) {
+        viewWindow.opener = null;
+        viewWindow.location.href = fileUrl;
       } else {
-        const link = document.createElement('a');
-        link.href = objectUrl;
-        link.download = downloadInfo.fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Inline on a phone: the file opens in this tab. Attachment: the browser saves it and the page stays.
+        window.location.assign(fileUrl);
       }
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     } catch {
-      toast({ title: 'Nije moguće otvoriti dokument', variant: 'destructive' });
+      viewWindow?.close();
+      toast({
+        title: 'Dokument nije otvoren',
+        description: 'Proverite internet vezu i pokušajte ponovo.',
+        variant: 'destructive',
+      });
     }
   };
 
   const answers = appointment.questionnaire?.answers as Record<string, unknown> | undefined;
+  const scheduledAt = new Date(appointment.scheduledAt);
+  const longDate = format(scheduledAt, 'EEEE, d. MMMM yyyy.', { locale: srLatn });
+  const isLocked = appointment.status === 'locked';
+  const isCancelled = appointment.status === 'cancelled';
+  const labsMissing = hasLabsWarning(appointment.appointmentType, appointment.labStatus);
+  const documents = documentsData?.documents ?? [];
+
+  const actions = (
+    <>
+      {isDoctor && appointment.patientId && (
+        <Button asChild variant="outline">
+          <Link href={`/patients/${appointment.patientId}/history`}>
+            <Activity aria-hidden="true" />
+            Istorija pacijenta
+          </Link>
+        </Button>
+      )}
+      {(isAdmin || isDoctor) && ['locked', 'submitted'].includes(appointment.status) && (
+        <Button variant="outline" onClick={handleReopen} disabled={reopenMutation.isPending}>
+          <RotateCcw aria-hidden="true" />
+          Ponovo otvori upitnik
+        </Button>
+      )}
+      {isAdmin && !isCancelled && (
+        <>
+          <Button variant="outline" onClick={startEdit}>
+            <Pencil aria-hidden="true" />
+            Izmeni termin
+          </Button>
+          <Button variant="outline" onClick={handleResend} disabled={resendMutation.isPending}>
+            <LinkIcon aria-hidden="true" />
+            {resendMutation.isPending ? 'Šaljem…' : 'Pošalji link ponovo'}
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="text-destructive hover:bg-destructive-soft">
+                <XCircle aria-hidden="true" />
+                Otkaži termin
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Otkazati termin za {normalizePersonName(appointment.invitedFullName)}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Link za pripremu će prestati da radi, a termin će biti označen kao otkazan. Ovo se ne može poništiti.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Zadrži termin</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleCancel}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Otkaži termin
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
+    </>
+  );
 
   return (
-    <StaffLayout title={`Termin: ${normalizePersonName(appointment.invitedFullName)}`}>
-      <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
-        <Button variant="outline" size="sm" className="gap-2" onClick={() => window.history.back()}>
-          <span aria-hidden="true">←</span>
-          Nazad
-        </Button>
-        {isDoctor && appointment.patientId && (
-          <Link href={`/patients/${appointment.patientId}/history`}>
-            <Button variant="outline" size="sm" className="gap-2">
-              <Activity size={16} /> Istorija
-            </Button>
-          </Link>
+    <StaffLayout>
+      <PageHeader
+        back={{ href: '/dashboard', label: 'Dnevni pregled' }}
+        title={normalizePersonName(appointment.invitedFullName)}
+        description={
+          <>
+            {appointmentTypeLabel(appointment.appointmentType)} ·{' '}
+            <time dateTime={scheduledAt.toISOString()}>
+              {longDate.charAt(0).toUpperCase() + longDate.slice(1)} u {format(scheduledAt, 'HH:mm')}
+            </time>
+          </>
+        }
+        actions={actions}
+      >
+        <dl className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-lg border bg-border min-[420px]:grid-cols-2 lg:grid-cols-4">
+          <StatusCell label="Priprema">
+            <AppointmentStatusBadge status={appointment.status} />
+          </StatusCell>
+          <StatusCell label="Nalazi">
+            {appointment.labStatus ? (
+              <LabStatusBadge labStatus={appointment.labStatus} />
+            ) : (
+              <span className="text-base text-muted-foreground">Nije navedeno</span>
+            )}
+          </StatusCell>
+          <StatusCell label="Upitnik">
+            <StatusBadge
+              tone={QUESTIONNAIRE_TONES[appointment.questionnaire?.status ?? 'not_started'] ?? 'neutral'}
+              icon={FileText}
+              label={appointment.questionnaire ? questionnaireStatusLabel(appointment.questionnaire.status) : 'Nije počet'}
+            />
+          </StatusCell>
+          <StatusCell label="Izmene">
+            {isLocked ? (
+              <StatusBadge tone="neutral" icon={Lock} label="Zaključano" />
+            ) : isCancelled ? (
+              <StatusBadge tone="danger" icon={XCircle} label="Otkazano" />
+            ) : (
+              <StatusBadge tone="info" icon={Pencil} label="Pacijent može da menja" />
+            )}
+          </StatusCell>
+        </dl>
+      </PageHeader>
+
+      <div className="space-y-4">
+        {isLocked && (
+          <Alert variant="info">
+            <Lock aria-hidden="true" />
+            <AlertTitle>Upitnik je zaključan</AlertTitle>
+            <AlertDescription>
+              Vreme pregleda je počelo, pa pacijent više ne može da menja odgovore. Ako nešto treba da se ispravi,
+              izaberite „Ponovo otvori upitnik”.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {labsMissing && !isCancelled && (
+          <Alert variant="warning">
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>Nalazi možda nedostaju</AlertTitle>
+            <AlertDescription>{LABS_WARNING_MESSAGE}</AlertDescription>
+          </Alert>
+        )}
+
+        {magicLink && (
+          <Alert variant="info">
+            <LinkIcon aria-hidden="true" />
+            <AlertTitle>Novi link za pripremu</AlertTitle>
+            <AlertDescription>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="min-w-0 flex-1 break-all rounded-md border bg-card px-3 py-2 font-mono text-sm">{magicLink}</code>
+                <Button variant="outline" onClick={() => copyText(magicLink)}>
+                  Kopiraj link
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {editing && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Izmena termina</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-scheduled-at">Datum i vreme</Label>
+                <Input
+                  id="edit-scheduled-at"
+                  type="datetime-local"
+                  value={editForm.scheduledAt}
+                  onChange={(e) => setEditForm((f) => ({ ...f, scheduledAt: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tip pregleda</Label>
+                <AppointmentTypeSelect
+                  value={editForm.appointmentType}
+                  onChange={(value) => setEditForm((f) => ({ ...f, appointmentType: value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Telefon</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={editForm.invitedPhone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, invitedPhone: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end md:col-span-3">
+                <Button variant="outline" onClick={() => setEditing(false)}>
+                  Odustani
+                </Button>
+                <Button onClick={saveEdit} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Čuvam…' : 'Sačuvaj izmene'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">{normalizePersonName(appointment.invitedFullName)}</h2>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-gray-600">
-            <span className="flex items-center gap-1">
-              <Calendar size={16} /> {format(new Date(appointment.scheduledAt), 'PPP', { locale: srLatn })}
-            </span>
-            <span className="flex items-center gap-1">
-              <Clock size={16} /> {format(new Date(appointment.scheduledAt), 'HH:mm')}
-            </span>
-            <span className="flex items-center gap-1">
-              <Stethoscope size={16} /> {appointmentTypeLabel(appointment.appointmentType)}
-            </span>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <AppointmentStatusBadge status={appointment.status} />
-            <LabStatusBadge labStatus={appointment.labStatus} />
-            <LabsWarningBadge
-              appointmentType={appointment.appointmentType}
-              labStatus={appointment.labStatus}
-            />
-            {appointment.questionnaire && (
-              <Badge variant="outline" className="gap-1 border-gray-200 bg-gray-50 text-gray-700">
-                Priprema: {questionnaireStatusLabel(appointment.questionnaire.status)}
-              </Badge>
-            )}
-          </div>
-
-          {appointment.status === 'locked' && (
-            <p className="mt-3 text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-2 max-w-xl">
-              Upitnik je zaključan jer je vreme pregleda počelo. Pacijent ne može da menja odgovore dok
-              ne otvorite upitnik ponovo. Klinički sadržaj ostaje samo za čitanje.
-            </p>
-          )}
-        </div>
-
-        <div className="flex gap-2 flex-wrap">
-          {isDoctor && appointment.patientId && (
-            <Link href={`/patients/${appointment.patientId}/history`}>
-              <Button variant="outline" className="gap-2">
-                <Activity size={16} /> Istorija pacijenta
-              </Button>
-            </Link>
-          )}
-          {(isAdmin || isDoctor) && ['locked', 'submitted'].includes(appointment.status) && (
-            <Button variant="outline" onClick={handleReopen} disabled={reopenMutation.isPending}>
-              Ponovo otvori upitnik
-            </Button>
-          )}
-          {isAdmin && appointment.status !== 'cancelled' && (
-            <>
-              <Button variant="outline" onClick={startEdit}>
-                Izmeni
-              </Button>
-              <Button variant="outline" onClick={handleResend} disabled={resendMutation.isPending} className="gap-2">
-                <LinkIcon size={16} /> Pošalji link ponovo
-              </Button>
-              <Button variant="destructive" onClick={handleCancel} disabled={cancelMutation.isPending}>
-                Otkaži
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {magicLink && (
-        <Alert className="mb-6 border-blue-200 bg-blue-50">
-          <LinkIcon className="h-4 w-4 text-blue-600" />
-          <AlertTitle className="text-blue-800">Link za pripremu</AlertTitle>
-          <AlertDescription className="mt-2">
-            <div className="flex gap-2 items-center flex-wrap">
-              <code className="bg-white p-2 rounded border border-blue-100 flex-1 text-sm break-all">{magicLink}</code>
-              <Button variant="secondary" onClick={() => copyText(magicLink)}>
-                Kopiraj
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {editing && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Izmena termina</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label>Datum i vreme</Label>
-              <Input
-                type="datetime-local"
-                value={editForm.scheduledAt}
-                onChange={(e) => setEditForm((f) => ({ ...f, scheduledAt: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Tip pregleda</Label>
-              <AppointmentTypeSelect
-                value={editForm.appointmentType}
-                onChange={(value) => setEditForm((f) => ({ ...f, appointmentType: value }))}
-              />
-            </div>
-            <div>
-              <Label>Telefon</Label>
-              <Input
-                value={editForm.invitedPhone}
-                onChange={(e) => setEditForm((f) => ({ ...f, invitedPhone: e.target.value }))}
-              />
-            </div>
-            <div className="md:col-span-3 flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setEditing(false)}>
-                Otkaži
-              </Button>
-              <Button onClick={saveEdit} disabled={updateMutation.isPending}>
-                Sačuvaj
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Operativni podaci</CardTitle>
+              <CardTitle className="text-xl">Kontakt i termin</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="text-gray-500">Tip pregleda:</span>
-                <span className="font-medium">{appointmentTypeLabel(appointment.appointmentType)}</span>
-                <span className="text-gray-500">Kontakt:</span>
-                <span className="font-medium">{appointment.invitedPhone}</span>
-                <span className="text-gray-500">Doktor:</span>
-                <span className="font-medium">{appointment.doctor?.fullName ? normalizePersonName(appointment.doctor.fullName) : '–'}</span>
-                <span className="text-gray-500">Kreirano:</span>
-                <span className="font-medium">
-                  {appointment.createdAt
-                    ? format(new Date(appointment.createdAt), 'PPP', { locale: srLatn })
-                    : '–'}
-                </span>
-                <span className="text-gray-500">Status nalaza:</span>
-                <span className="font-medium">
-                  <LabStatusBadge labStatus={appointment.labStatus} />
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 pt-2 border-t">
-                Administracija ne vidi odgovore iz upitnika ni dokumente — samo operativni status.
-              </p>
+            <CardContent>
+              <dl className="divide-y">
+                <InfoRow label="Tip pregleda">{appointmentTypeLabel(appointment.appointmentType)}</InfoRow>
+                <InfoRow label="Telefon">{appointment.invitedPhone || '–'}</InfoRow>
+                <InfoRow label="Doktor">
+                  {appointment.doctor?.fullName ? normalizePersonName(appointment.doctor.fullName) : '–'}
+                </InfoRow>
+                <InfoRow label="Pozivnica kreirana">
+                  {appointment.createdAt ? format(new Date(appointment.createdAt), 'd. MMMM yyyy.', { locale: srLatn }) : '–'}
+                </InfoRow>
+              </dl>
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Status pripreme</CardTitle>
+              <CardTitle className="text-xl">Tok pripreme</CardTitle>
             </CardHeader>
             <CardContent>
               {appointment.questionnaire ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-green-700">
-                    <CheckCircle2 size={20} />
-                    <span className="font-medium">
-                      {questionnaireStatusLabel(appointment.questionnaire.status)}
-                    </span>
-                  </div>
-                  <div className="text-sm space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Saglasnost:</span>
-                      <span>
-                        {appointment.questionnaire.consentGivenAt
-                          ? format(new Date(appointment.questionnaire.consentGivenAt), 'Pp', { locale: srLatn })
-                          : 'Ne'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Poslednje čuvanje:</span>
-                      <span>
-                        {appointment.questionnaire.savedAt
-                          ? format(new Date(appointment.questionnaire.savedAt), 'Pp', { locale: srLatn })
-                          : '–'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between font-medium">
-                      <span className="text-gray-500">Poslato:</span>
-                      <span>
-                        {appointment.questionnaire.submittedAt
-                          ? format(new Date(appointment.questionnaire.submittedAt), 'Pp', { locale: srLatn })
-                          : 'Na čekanju'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <dl className="divide-y">
+                  <InfoRow label="Saglasnost">
+                    {appointment.questionnaire.consentGivenAt
+                      ? format(new Date(appointment.questionnaire.consentGivenAt), 'd. MMM yyyy. HH:mm', { locale: srLatn })
+                      : 'Nije data'}
+                  </InfoRow>
+                  <InfoRow label="Poslednje čuvanje">
+                    {appointment.questionnaire.savedAt
+                      ? format(new Date(appointment.questionnaire.savedAt), 'd. MMM yyyy. HH:mm', { locale: srLatn })
+                      : '–'}
+                  </InfoRow>
+                  <InfoRow label="Poslato doktoru">
+                    {appointment.questionnaire.submittedAt
+                      ? format(new Date(appointment.questionnaire.submittedAt), 'd. MMM yyyy. HH:mm', { locale: srLatn })
+                      : 'Još nije'}
+                  </InfoRow>
+                </dl>
               ) : (
-                <div className="flex items-center gap-2 text-orange-600">
-                  <AlertTriangle size={20} />
-                  <span>Pacijent još nije počeo.</span>
-                </div>
+                <p className="text-base text-muted-foreground">Pacijent još nije otvorio pripremu.</p>
               )}
             </CardContent>
           </Card>
+          <p className="text-sm text-muted-foreground md:col-span-2">
+            Administracija vidi samo tok pripreme — odgovori iz upitnika i dokumenti su vidljivi samo doktoru.
+          </p>
         </div>
       )}
 
       {isDoctor && (
-        <Tabs defaultValue="summary" className="w-full">
-          <TabsList className="bg-white border w-full justify-start rounded-b-none border-b-0 h-12 px-2 overflow-x-auto">
-            <TabsTrigger value="summary" className="text-base py-2">
+        <Tabs defaultValue="summary" className="mt-8 w-full">
+          <TabsList className="mb-4 w-full justify-start overflow-x-auto sm:w-auto">
+            <TabsTrigger value="summary" className="flex-1 sm:flex-none">
               Sažeci
             </TabsTrigger>
-            <TabsTrigger value="questionnaire" className="text-base py-2">
+            <TabsTrigger value="questionnaire" className="flex-1 sm:flex-none">
               Odgovori
             </TabsTrigger>
-            <TabsTrigger value="documents" className="text-base py-2">
-              Dokumenti
+            <TabsTrigger value="documents" className="flex-1 sm:flex-none">
+              Dokumenti <span className="tabular text-muted-foreground">{documents.length}</span>
             </TabsTrigger>
           </TabsList>
 
-          <Card className="rounded-t-none border-t-0 shadow-none border-x border-b mb-8">
-            <CardContent className="p-6">
-              <TabsContent value="summary" className="m-0 mt-0">
-                <p className="mb-4 text-sm text-gray-500">
-                  Deterministički sažeci (bez AI) iz podataka koje je prijavio pacijent — nisu verifikovani
-                  od strane doktora i ne zamenjuju zvaničan medicinski izveštaj.
-                </p>
+          <TabsContent value="summary" className="mt-0">
+            {summaries?.summaries && summaries.summaries.length > 0 ? (
+              <Tabs defaultValue="current_visit" className="w-full">
+                <TabsList className="mb-4 w-full justify-start overflow-x-auto bg-transparent p-0">
+                  <TabsTrigger
+                    value="current_visit"
+                    className="border border-transparent data-[state=active]:border-border data-[state=active]:shadow-none"
+                  >
+                    Trenutna poseta
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="current_visit_plus_history"
+                    className="border border-transparent data-[state=active]:border-border data-[state=active]:shadow-none"
+                  >
+                    Poseta + istorija
+                  </TabsTrigger>
+                </TabsList>
 
-                {summaries?.summaries && summaries.summaries.length > 0 ? (
-                  <Tabs defaultValue="current_visit" className="w-full">
-                    <TabsList className="mb-4 grid w-full grid-cols-1 gap-1 bg-gray-50 sm:grid-cols-2">
-                      <TabsTrigger value="current_visit">Sažetak trenutne posete</TabsTrigger>
-                      <TabsTrigger value="current_visit_plus_history">Sažetak + relevantna istorija</TabsTrigger>
-                    </TabsList>
+                {(['current_visit', 'current_visit_plus_history'] as const).map((variant) => {
+                  const summary = summaries.summaries.find((item) => item.variant === variant);
+                  return (
+                    <TabsContent key={variant} value={variant} className="mt-0">
+                      {summary ? (
+                        <SummaryPanel summary={summary} />
+                      ) : (
+                        <Card>
+                          <EmptyState
+                            icon={FileText}
+                            title="Ovaj sažetak još nije napravljen"
+                            description="Pojaviće se čim pacijent sačuva ili pošalje pripremu."
+                          />
+                        </Card>
+                      )}
+                    </TabsContent>
+                  );
+                })}
+              </Tabs>
+            ) : (
+              <Card>
+                <EmptyState
+                  icon={FileText}
+                  title="Sažetak još ne postoji"
+                  description="Pravi se automatski iz odgovora pacijenta, čim pacijent sačuva ili pošalje pripremu."
+                />
+              </Card>
+            )}
+          </TabsContent>
 
-                    {(['current_visit', 'current_visit_plus_history'] as const).map((variant) => {
-                      const summary = summaries.summaries.find((item) => item.variant === variant);
-                      return (
-                        <TabsContent key={variant} value={variant} className="m-0">
-                          {summary ? (
-                            <SummaryPanel summary={summary} />
-                          ) : (
-                            <div className="rounded-xl border border-dashed bg-gray-50 p-8 text-center text-sm text-gray-500">
-                              Ovaj sažetak još nije generisan. Pojaviće se kada pacijent sačuva ili pošalje
-                              pripremu.
-                            </div>
-                          )}
-                        </TabsContent>
-                      );
-                    })}
-                  </Tabs>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <AlertTriangle className="mx-auto h-12 w-12 text-gray-300 mb-3" aria-hidden="true" />
-                    <p>Sažetak će se pojaviti kada pacijent sačuva ili pošalje pripremu.</p>
-                  </div>
-                )}
-              </TabsContent>
+          <TabsContent value="questionnaire" className="mt-0">
+            <p className="mb-4 max-w-prose text-base text-muted-foreground">
+              Odgovori pacijenta, po sekcijama upitnika. Pitanja bez odgovora su prikazana, da se vidi šta nedostaje.
+            </p>
+            <AnswersPanel answers={answers} />
+          </TabsContent>
 
-              <TabsContent value="questionnaire" className="m-0 mt-0">
-                <p className="mb-4 text-sm text-gray-500">
-                  Sirovi odgovori pacijenta, grupisani po sekcijama upitnika. Pitanja bez odgovora su
-                  prikazana da nedostaci budu vidljivi, a ne skriveni.
-                </p>
-                <AnswersPanel answers={answers} />
-              </TabsContent>
-
-
-              <TabsContent value="documents" className="m-0 mt-0">
-                <p className="mb-4 flex items-center gap-2 text-sm text-gray-500">
-                  <Lock size={14} aria-hidden="true" />
-                  Pacijentovi dokumenti su samo za pregled i preuzimanje — doktor ih ne može menjati niti
-                  brisati.
-                </p>
-                {documentsData?.documents && documentsData.documents.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {documentsData.documents.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center justify-between p-4 border rounded-xl hover:border-primary/30 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg shrink-0">
-                            <FileBox size={20} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium text-sm truncate">{doc.originalFileName}</p>
-                            <p className="text-xs text-gray-500">
-                              {formatFileSize(doc.fileSizeBytes)}
-                              {doc.documentType
-                                ? ` • ${labelFor(DOCUMENT_TYPE_LABELS, doc.documentType)}`
-                                : ` • ${doc.mimeType}`}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" title="Prikaži dokument" onClick={() => openDocument(doc.id, 'inline')}>
-                            <FileText size={18} />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Preuzmi dokument" onClick={() => openDocument(doc.id, 'attachment')}>
-                            <Download size={18} />
-                          </Button>
-                        </div>
+          <TabsContent value="documents" className="mt-0">
+            {documents.length > 0 ? (
+              <ul className="divide-y overflow-hidden rounded-lg border bg-card">
+                {documents.map((doc) => (
+                  <li key={doc.id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <FileText className="mt-0.5 size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="break-words text-base font-medium">{doc.originalFileName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {doc.documentType ? labelFor(DOCUMENT_TYPE_LABELS, doc.documentType) : doc.mimeType} ·{' '}
+                          {formatFileSize(doc.fileSizeBytes)}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <p>Nema otpremljenih dokumenata za ovaj pregled.</p>
-                  </div>
-                )}
-              </TabsContent>
-            </CardContent>
-          </Card>
+                    </div>
+                    <div className="flex shrink-0 gap-2 pl-9 sm:pl-0">
+                      <Button variant="outline" size="sm" onClick={() => openDocument(doc.id, 'inline')}>
+                        <ExternalLink aria-hidden="true" />
+                        Otvori
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => openDocument(doc.id, 'attachment')}>
+                        <Download aria-hidden="true" />
+                        Preuzmi
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Card>
+                <EmptyState
+                  icon={FileText}
+                  title="Pacijent nije dodao dokumente"
+                  description={
+                    appointment.labStatus
+                      ? 'Status nalaza je naveden iznad — pacijent ih možda donosi lično.'
+                      : 'Pacijent još nije naveo da li ima nalaze.'
+                  }
+                />
+              </Card>
+            )}
+            <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <Lock className="size-4" aria-hidden="true" />
+              Dokumenti pacijenta su samo za pregled i preuzimanje.
+            </p>
+          </TabsContent>
         </Tabs>
       )}
     </StaffLayout>
+  );
+}
+
+function StatusCell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 bg-card px-4 py-3">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5 py-3 first:pt-0 last:pb-0 sm:flex-row sm:justify-between sm:gap-4">
+      <dt className="text-base text-muted-foreground">{label}</dt>
+      <dd className="text-base font-medium sm:text-right">{children}</dd>
+    </div>
   );
 }

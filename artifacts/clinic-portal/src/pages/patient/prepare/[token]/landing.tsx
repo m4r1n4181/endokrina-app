@@ -8,7 +8,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { DateOfBirthField } from '@/components/date-of-birth-field';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Clock3, Link2Off, LoaderCircle, ShieldCheck, Stethoscope } from 'lucide-react';
+import { PatientCard, PatientShell, PatientTitle } from '@/components/layout/patient-shell';
+import { Clock3, Link2Off, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const dobSchema = z.object({
@@ -64,7 +65,7 @@ export default function PrepareLanding() {
           if (res.email) sessionStorage.setItem('patient_masked_email', res.email);
           setLocation(`/prepare/${token}/otp`);
         } else {
-          toast({ title: 'Greška', description: 'Nije moguće poslati kod. Pokušajte ponovo.', variant: 'destructive' });
+          toast({ title: 'Kod nije poslat', description: 'Nismo uspeli da pošaljemo kod. Pokušajte ponovo za minut.', variant: 'destructive' });
         }
       },
       onError: (err: any) => {
@@ -90,85 +91,72 @@ export default function PrepareLanding() {
   const isUnavailable = linkStatus === 'expired' || linkStatus === 'inactive';
 
   return (
-    <div className="min-h-screen bg-patient-portal-gradient flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 p-8">
-        {linkStatus === 'checking' && (
-          <div className="min-h-72 flex flex-col items-center justify-center text-center">
-            <LoaderCircle className="w-10 h-10 text-[#185e46] animate-spin mb-5" aria-hidden="true" />
-            <h1 className="text-2xl font-serif text-[#185e46] mb-2">Provera linka</h1>
-            <p className="text-gray-600">Trenutak, proveravamo da li je pozivnica aktivna.</p>
+    <PatientShell>
+      {linkStatus === 'checking' && (
+        <PatientCard>
+          <div className="flex flex-col items-center py-8 text-center" role="status">
+            <LoaderCircle className="size-8 animate-spin text-primary" aria-hidden="true" />
+            <p className="mt-4">Proveravamo vašu pozivnicu…</p>
           </div>
-        )}
+        </PatientCard>
+      )}
 
-        {isUnavailable && (
-          <div className="min-h-72 flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mb-6">
-              {linkStatus === 'expired' ? <Clock3 size={32} aria-hidden="true" /> : <Link2Off size={32} aria-hidden="true" />}
-            </div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 mb-3">Pristup nije dostupan</p>
-            <h1 className="text-2xl font-serif text-[#185e46] mb-4">
-              {linkStatus === 'expired' ? 'Link je istekao' : 'Link nije aktivan'}
-            </h1>
-            <p className="text-gray-600 leading-relaxed">
-              {linkStatus === 'expired'
-                ? 'Ova pozivnica više nije važeća. Kontaktirajte kliniku ako vam je potreban novi link.'
-                : 'Ova pozivnica nije dostupna. Proverite da li ste otvorili najnoviji link ili kontaktirajte kliniku.'}
-            </p>
-          </div>
-        )}
+      {isUnavailable && (
+        <PatientCard>
+          {linkStatus === 'expired' ? (
+            <Clock3 className="mb-4 size-8 text-warning" aria-hidden="true" />
+          ) : (
+            <Link2Off className="mb-4 size-8 text-warning" aria-hidden="true" />
+          )}
+          <PatientTitle>{linkStatus === 'expired' ? 'Ovaj link je istekao' : 'Ovaj link nije aktivan'}</PatientTitle>
+          <p className="mt-3 text-muted-foreground">
+            {linkStatus === 'expired'
+              ? 'Pozivnica više ne važi. Pozovite kliniku i zatražite novi link — vaši sačuvani odgovori ostaju.'
+              : 'Proverite da li ste otvorili najnoviji link iz emaila. Ako jeste, pozovite kliniku da vam pošalje novi.'}
+          </p>
+        </PatientCard>
+      )}
 
-        {linkStatus === 'active' && <>
-        <div className="text-center space-y-6 mb-8">
-          <div className="mx-auto w-16 h-16 bg-[#185e46] rounded-2xl flex items-center justify-center text-white shadow-lg shadow-[#185e46]/20">
-            <Stethoscope size={32} />
-          </div>
-          <h1 className="text-3xl font-serif text-[#185e46] leading-tight">Priprema za pregled</h1>
-          <p className="text-gray-600 text-lg">
+      {linkStatus === 'active' && (
+        <PatientCard>
+          <PatientTitle>Priprema za pregled</PatientTitle>
+          <p className="mt-3 text-muted-foreground">
             Radi vaše privatnosti, unesite datum rođenja da biste otvorili upitnik.
           </p>
-        </div>
 
-        <div className="bg-green-50 text-green-800 p-4 rounded-xl mb-6 flex items-start gap-3 text-sm">
-          <ShieldCheck className="shrink-0 mt-0.5" />
-          <p>Vaši podaci su zaštićeni i namenjeni pripremi doktora za pregled.</p>
-        </div>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-8">
+              <FormField
+                control={form.control}
+                name="dateOfBirth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-lg">Datum rođenja</FormLabel>
+                    <FormControl>
+                      <DateOfBirthField
+                        variant="patient"
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        disabled={field.disabled}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-base" />
+                  </FormItem>
+                )}
+              />
+              <Button type="submit" size="xl" className="w-full" disabled={verifyMutation.isPending}>
+                {verifyMutation.isPending ? 'Proveravam…' : 'Nastavi'}
+              </Button>
+            </form>
+          </Form>
 
-        <p className="text-xs text-gray-500 mb-6 leading-relaxed">
-          Ovaj formular pomaže vašem doktoru da se pripremi za pregled. On ne zamenjuje medicinski pregled ili zvaničnu evidenciju klinike.
-        </p>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="dateOfBirth"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-gray-700 text-base">Datum rođenja</FormLabel>
-                  <FormControl>
-                    <DateOfBirthField
-                      variant="patient"
-                      value={field.value}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                      disabled={field.disabled}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button 
-              type="submit" 
-              className="w-full text-lg py-6 bg-[#185e46] hover:bg-[#124a37] text-white rounded-xl"
-              disabled={verifyMutation.isPending}
-            >
-              {verifyMutation.isPending ? 'Proveravam...' : 'Nastavi'}
-            </Button>
-          </form>
-        </Form>
-        </>}
-      </div>
-    </div>
+          <p className="mt-6 flex items-start gap-3 text-base text-muted-foreground">
+            <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+            Vaše podatke vidi samo vaš doktor, i to radi pripreme za pregled.
+          </p>
+        </PatientCard>
+      )}
+    </PatientShell>
   );
 }

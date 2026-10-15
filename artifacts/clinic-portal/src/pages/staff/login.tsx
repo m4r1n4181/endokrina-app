@@ -7,11 +7,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { BrandMark } from '@/components/brand';
+import { NotEmrNotice } from '@/components/not-emr-notice';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
-import { Stethoscope } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Unesite ispravan email'),
@@ -47,7 +47,7 @@ export default function LoginStaff() {
           }
           toast({
             title: 'Prijava nije uspela',
-            description: err?.data?.error || 'Pogrešni podaci. Pokušajte ponovo.',
+            description: err?.data?.error || 'Email ili lozinka nisu tačni. Proverite ih i pokušajte ponovo.',
             variant: 'destructive',
           });
         },
@@ -56,18 +56,12 @@ export default function LoginStaff() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50/50 p-4">
-      <Card className="w-full max-w-md shadow-lg border-primary/10">
-        <CardHeader className="space-y-4 text-center">
-          <div className="mx-auto w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-primary-foreground shadow-sm">
-            <Stethoscope size={24} />
-          </div>
-          <div className="space-y-2">
-            <CardTitle className="text-2xl font-serif text-primary">Portal klinike</CardTitle>
-            <CardDescription>Prijava za osoblje i doktore</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-md">
+        <BrandMark className="mb-8" />
+        <div className="rounded-lg border bg-card p-6 shadow-sm sm:p-8">
+          <h1 className="text-2xl font-semibold">Prijava za osoblje</h1>
+          <p className="mb-6 mt-1 text-base text-muted-foreground">Za doktore, sestre i administraciju klinike.</p>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -77,7 +71,7 @@ export default function LoginStaff() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="doctor@clinic.com" {...field} data-testid="input-email" />
+                      <Input type="email" autoComplete="username" placeholder="ime@klinika.rs" {...field} data-testid="input-email" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -90,7 +84,7 @@ export default function LoginStaff() {
                   <FormItem>
                     <FormLabel>Lozinka</FormLabel>
                     <FormControl>
-                      <Input type="password" {...field} data-testid="input-password" />
+                      <Input type="password" autoComplete="current-password" {...field} data-testid="input-password" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -102,7 +96,7 @@ export default function LoginStaff() {
                   name="mfaToken"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>MFA kod</FormLabel>
+                      <FormLabel>Kod iz emaila</FormLabel>
                       <FormControl>
                         <InputOTP maxLength={6} {...field}>
                           <InputOTPGroup className="gap-2">
@@ -110,13 +104,13 @@ export default function LoginStaff() {
                               <InputOTPSlot
                                 key={index}
                                 index={index}
-                                className="w-12 h-14 text-2xl border-gray-300 rounded-md"
+                                className="h-14 w-11 text-2xl sm:w-12"
                               />
                             ))}
                           </InputOTPGroup>
                         </InputOTP>
                       </FormControl>
-                      <p className="text-xs text-gray-500">Kod za prijavu je poslat na email adresu vašeg naloga.</p>
+                      <p className="text-sm text-muted-foreground">Poslali smo šestocifreni kod na email adresu vašeg naloga.</p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -124,19 +118,18 @@ export default function LoginStaff() {
               )}
               <Button
                 type="submit"
+                size="lg"
                 className="w-full"
                 disabled={loginMutation.isPending}
                 data-testid="button-submit-login"
               >
-                {loginMutation.isPending ? 'Prijava...' : 'Prijavi se'}
+                {loginMutation.isPending ? 'Prijavljujem…' : 'Prijavi se'}
               </Button>
             </form>
           </Form>
-          <p className="text-xs text-gray-500 mt-6 text-center">
-            Platforma nije zvanična medicinska evidencija. Koristi se za pripremu pregleda.
-          </p>
-        </CardContent>
-      </Card>
+        </div>
+        <NotEmrNotice variant="staff" className="mt-6" />
+      </div>
     </div>
   );
 }

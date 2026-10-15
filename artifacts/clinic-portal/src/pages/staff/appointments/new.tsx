@@ -1,5 +1,5 @@
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { StaffLayout } from '../dashboard';
+import { StaffLayout, PageHeader } from '@/components/layout/staff-layout';
 import { useCreateAppointment, useListStaffUsers } from '@workspace/api-client-react';
 import { useLocation } from 'wouter';
 import { z } from 'zod';
@@ -16,7 +16,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, UserCheck } from 'lucide-react';
+import { AlertCircle, Copy, UserCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { srLatn } from 'date-fns/locale';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -74,11 +74,12 @@ export default function NewAppointment() {
 
   if (user?.role !== 'clinic_admin') {
     return (
-      <StaffLayout title="Pristup odbijen">
-        <Alert variant="destructive" className="max-w-xl mx-auto mt-12">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Nedovoljna ovlašćenja</AlertTitle>
-          <AlertDescription>Samo administracija može da kreira pozivnice za pripremu.</AlertDescription>
+      <StaffLayout>
+        <PageHeader back={{ href: '/dashboard', label: 'Dnevni pregled' }} title="Nova pozivnica" />
+        <Alert variant="destructive" className="max-w-2xl">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Pozivnice šalje administracija</AlertTitle>
+          <AlertDescription>Vaš nalog nema pravo da kreira pozivnice. Obratite se administratoru klinike.</AlertDescription>
         </Alert>
       </StaffLayout>
     );
@@ -133,7 +134,7 @@ export default function NewAppointment() {
         onError: (err: any) => {
           toast({
             title: 'Kreiranje nije uspelo',
-            description: err?.data?.error || 'Nepoznata greška',
+            description: err?.data?.error || 'Proverite unete podatke i pokušajte ponovo.',
             variant: 'destructive',
           });
         },
@@ -152,28 +153,34 @@ export default function NewAppointment() {
 
   if (createdLink) {
     return (
-      <StaffLayout title="Pozivnica kreirana">
-        <Card className="max-w-2xl mx-auto">
+      <StaffLayout>
+        <PageHeader
+          back={{ href: '/dashboard', label: 'Dnevni pregled' }}
+          title="Pozivnica je poslata"
+          description="Pacijent je dobio email sa linkom za pripremu."
+        />
+        <Card className="max-w-2xl">
           <CardHeader>
             <CardTitle>Link za pacijenta</CardTitle>
             <CardDescription>
-              Pošaljite ovaj link pacijentu (SMS/Viber). U lokalnom režimu SMS je stub — OTP se vidi u konzoli API servera.
+              Ako pacijent ne nađe email, pošaljite mu ovaj link porukom (SMS ili Viber).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <code className="block bg-gray-50 p-3 rounded border text-sm break-all">{createdLink}</code>
-            <div className="flex gap-2">
+            <code className="block break-all rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm">{createdLink}</code>
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Button
                 onClick={() => {
                   copyTextToClipboard(createdLink)
-                    .then(() => toast({ title: 'Kopirano' }))
-                    .catch(() => toast({ title: 'Kopiranje nije uspelo', variant: 'destructive' }));
+                    .then(() => toast({ title: 'Link je kopiran' }))
+                    .catch(() => toast({ title: 'Kopiranje nije uspelo', description: 'Označite link i kopirajte ga ručno.', variant: 'destructive' }));
                 }}
               >
+                <Copy aria-hidden="true" />
                 Kopiraj link
               </Button>
               <Button variant="outline" onClick={() => setLocation('/dashboard')}>
-                Nazad na pregled
+                Nazad na dnevni pregled
               </Button>
             </div>
           </CardContent>
@@ -183,18 +190,15 @@ export default function NewAppointment() {
   }
 
   return (
-    <StaffLayout title="Nova pozivnica">
-      <div className="max-w-2xl mx-auto">
+    <StaffLayout>
+      <PageHeader
+        back={{ href: '/dashboard', label: 'Dnevni pregled' }}
+        title="Nova pozivnica"
+        description="Pacijent dobija email sa linkom za pripremu pre pregleda."
+      />
+      <div className="max-w-2xl">
         <Card>
-          <CardHeader>
-            <CardTitle>Pozovi pacijenta</CardTitle>
-            <CardDescription>
-              Unesite ime, email, telefon, datum rođenja, tip i vreme pregleda. Dok kucate ime, predlažemo
-              pacijente koji već postoje u sistemu. Sistem generiše siguran link za pripremu i šalje ga
-              pacijentu na email.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-5 md:pt-6">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
@@ -224,8 +228,8 @@ export default function NewAppointment() {
                 />
 
                 {matchedPatient && (
-                  <Alert className="border-blue-200 bg-blue-50 text-blue-900">
-                    <UserCheck className="h-4 w-4" />
+                  <Alert variant="info">
+                    <UserCheck aria-hidden="true" />
                     <AlertTitle>Postojeći pacijent u sistemu</AlertTitle>
                     <AlertDescription>
                       <p>
@@ -260,7 +264,7 @@ export default function NewAppointment() {
                   )}
                 />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                  <FormField
                     control={form.control}
                     name="invitedEmail"
@@ -276,7 +280,7 @@ export default function NewAppointment() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="invitedPhone"
@@ -286,7 +290,7 @@ export default function NewAppointment() {
                         <FormControl>
                           <div className="flex gap-2">
                             <Select value={countryCode} onValueChange={(code) => { const nationalNumber = field.value.startsWith(countryCode) ? field.value.slice(countryCode.length) : field.value.replace(/^\+\d+/, ''); setCountryCode(code); field.onChange(`${code}${nationalNumber}`); void form.trigger('invitedPhone'); }}>
-                              <SelectTrigger className="w-[170px] shrink-0"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="w-36 shrink-0 sm:w-48" aria-label="Pozivni broj"><SelectValue /></SelectTrigger>
                               <SelectContent>{countryCodes.map(([country, name, code]) => <SelectItem key={country} value={code}>{name} ({code})</SelectItem>)}</SelectContent>
                             </Select>
                             <Input inputMode="tel" type="tel" placeholder="601234567" value={field.value.startsWith(countryCode) ? field.value.slice(countryCode.length) : field.value} onChange={(event) => { field.onChange(`${countryCode}${event.target.value}`); void form.trigger('invitedPhone'); }} />
@@ -309,7 +313,7 @@ export default function NewAppointment() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="doctorId"
@@ -349,10 +353,10 @@ export default function NewAppointment() {
                   />
                 </div>
 
-                <div className="flex justify-between pt-4">
-                  <Button type="button" variant="outline" onClick={clearForm}>Očisti sva polja</Button>
+                <div className="flex flex-col-reverse gap-2 border-t pt-6 sm:flex-row sm:justify-between">
+                  <Button type="button" variant="ghost" onClick={clearForm}>Očisti polja</Button>
                   <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-appointment">
-                    {createMutation.isPending ? 'Kreiram...' : 'Kreiraj i generiši link'}
+                    {createMutation.isPending ? 'Šaljem…' : 'Pošalji pozivnicu'}
                   </Button>
                 </div>
               </form>
