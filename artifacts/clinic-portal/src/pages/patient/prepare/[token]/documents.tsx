@@ -1,17 +1,26 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { usePatientAuth } from '@/hooks/use-patient-auth';
-import { customFetch, useListDocuments, getListDocumentsQueryKey, Document } from '@workspace/api-client-react';
+import {
+  customFetch,
+  useGetQuestionnaire,
+  useListDocuments,
+  getListDocumentsQueryKey,
+  Document,
+} from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { FileUp, File as FileIcon, CheckCircle2, ChevronRight, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronLeft, FileUp, LoaderCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { LAB_STATUS_PATIENT_OPTIONS } from '@/lib/labels';
+import { PatientStepShell, PatientTitle } from '@/components/layout/patient-shell';
+import { useQuestionnaireSchema } from '@/lib/questionnaire';
+import { PrepGuidanceList } from '@/components/prep-guidance';
+import { ChoiceRow } from '@/components/choice-row';
+import { LAB_STATUS_PATIENT_OPTIONS, expectsLabs } from '@/lib/labels';
 
 const LAB_OPTIONS = LAB_STATUS_PATIENT_OPTIONS;
 
@@ -29,6 +38,16 @@ export default function PrepareDocuments() {
     },
   });
 
+  const { data: questionnaireState } = useGetQuestionnaire(appointmentId || '', {
+    query: { enabled: !!appointmentId, queryKey: ['questionnaire', appointmentId] },
+  });
+  const appointmentType = questionnaireState?.appointment?.appointmentType;
+  const labsExpected = expectsLabs(appointmentType);
+  const { data: schema } = useQuestionnaireSchema();
+  const totalSteps = schema ? schema.sections.length + 1 : undefined;
+
+  const statusRef = useRef<HTMLDivElement>(null);
+  const [statusError, setStatusError] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [labStatus, setLabStatus] = useState<string>('');
   const [labSaving, setLabSaving] = useState(false);
@@ -41,7 +60,8 @@ export default function PrepareDocuments() {
 
     const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
     if (!allowed.includes(file.type) && !file.name.match(/\.(pdf|jpe?g|png)$/i)) {
-      toast({ title: 'Nepodržan format', description: 'Dozvoljeni su PDF, JPG i PNG.', variant: 'destructive' });
+      toast({ title: 'Ovaj fajl ne možemo da primimo', description: 'Dodajte fotografiju (JPG, PNG) ili PDF.', variant: 'destructive' });
+      e.target.value = '';
       return;
     }
 
@@ -57,24 +77,29 @@ export default function PrepareDocuments() {
       responseType: 'json',
     })
       .then(() => {
-        toast({ title: 'Dokument uspešno dodat' });
+        toast({ title: 'Nalaz je dodat' });
         setLabStatus('uploaded_digitally');
+        setStatusError(false);
         queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey(appointmentId) });
       })
       .catch((error: any) => {
         const description = error?.data?.code === 'FILE_TOO_LARGE'
-          ? 'Fajl je prevelik. Maksimalna veličina je 20MB.'
+          ? 'Fajl je veći od 20 MB. Slikajte nalaz ponovo ili ga sačuvajte kao manji PDF.'
           : error?.data?.code === 'UNSUPPORTED_FILE_TYPE'
-            ? 'Dozvoljeni su PDF, JPG i PNG fajlovi.'
-            : 'Pokušajte ponovo.';
-        toast({ title: 'Greška pri otpremanju', description, variant: 'destructive' });
+            ? 'Dodajte fotografiju (JPG, PNG) ili PDF.'
+            : 'Proverite internet vezu i pokušajte ponovo.';
+        toast({ title: 'Nalaz nije dodat', description, variant: 'destructive' });
       })
-      .finally(() => setIsUploading(false));
+      .finally(() => {
+        setIsUploading(false);
+        e.target.value = '';
+      });
   };
 
   const saveLabStatus = async (value: string) => {
     if (!appointmentId) return;
     setLabStatus(value);
+    setStatusError(false);
     setLabSaving(true);
     try {
       const res = await fetch(`/api/uploads/${appointmentId}/lab-status`, {
@@ -83,9 +108,8 @@ export default function PrepareDocuments() {
         body: JSON.stringify({ labStatus: value }),
       });
       if (!res.ok) throw new Error('failed');
-      toast({ title: 'Status nalaza sačuvan' });
     } catch {
-      toast({ title: 'Greška', description: 'Nije moguće sačuvati status nalaza.', variant: 'destructive' });
+      toast({ title: 'Izbor nije sačuvan', description: 'Proverite internet vezu i izaberite ponovo.', variant: 'destructive' });
     } finally {
       setLabSaving(false);
     }
@@ -93,11 +117,8 @@ export default function PrepareDocuments() {
 
   const handleFinish = async () => {
     if (!labStatus && documents.length === 0) {
-      toast({
-        title: 'Izaberite status nalaza',
-        description: 'Možete nastaviti i bez otpremanja — samo izaberite jednu opciju ispod.',
-        variant: 'destructive',
-      });
+      setStatusError(true);
+      statusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     if (labStatus && labStatus !== 'uploaded_digitally') {
@@ -106,110 +127,132 @@ export default function PrepareDocuments() {
     setLocation(`/prepare/${token}/done`);
   };
 
-  const showStrongWarning =
-    labStatus === 'no_results_available' || labStatus === 'results_pending' || (!labStatus && documents.length === 0);
+  const hasDocuments = documents.length > 0;
+  const missingLabs =
+    labsExpected && !hasDocuments && (labStatus === 'no_results_available' || labStatus === 'results_pending');
+  const options = LAB_OPTIONS.filter((opt) => opt.value !== 'uploaded_digitally' || hasDocuments);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-28 pt-8">
-      <main className="max-w-2xl mx-auto px-4">
-        <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl font-serif text-[#185e46] mb-3">Laboratorijski nalazi</h2>
-          <p className="text-gray-600 text-lg leading-relaxed">
-            Otpremite nalaze ako ih imate, ili samo izaberite status ispod. Bez nalaza ne možete biti
-            blokirani — pripremu možete poslati u svakom slučaju.
+    <PatientStepShell
+      step={totalSteps}
+      totalSteps={totalSteps}
+      actions={
+        <>
+          <Button
+            variant="outline"
+            size="xl"
+            className="px-4"
+            onClick={() => setLocation(`/prepare/${token}/questionnaire`)}
+            aria-label="Nazad na upitnik"
+          >
+            <ChevronLeft aria-hidden="true" />
+            <span className="hidden sm:inline">Upitnik</span>
+          </Button>
+          <Button size="xl" className="flex-1" onClick={handleFinish} disabled={labSaving || isUploading}>
+            Završi pripremu
+          </Button>
+        </>
+      }
+    >
+      <section className="rounded-xl border bg-card px-5 py-6 sm:px-8 sm:py-8">
+        <PatientTitle>Laboratorijski nalazi</PatientTitle>
+        <p className="mt-2 text-muted-foreground">
+          Dodajte nalaze ako ih imate — slika telefonom je dovoljna. Ako ih nemate, samo izaberite šta važi za vas. Pripremu
+          možete završiti u svakom slučaju.
+        </p>
+
+        <PrepGuidanceList appointmentType={appointmentType} title="Šta je potrebno za ovaj pregled" showFootnote={false} className="mt-6" />
+
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold">Dodajte nalaz</h2>
+          <label
+            htmlFor="lab-file"
+            className="mt-3 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-input bg-card px-6 py-6 text-center transition-colors duration-150 hover:border-primary hover:bg-primary-soft/40 has-[:focus-visible]:border-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring"
+          >
+            {isUploading ? (
+              <>
+                <LoaderCircle className="size-8 animate-spin text-primary" aria-hidden="true" />
+                <span className="mt-3 font-medium">Dodajem nalaz…</span>
+              </>
+            ) : (
+              <>
+                <FileUp className="size-8 text-primary" aria-hidden="true" />
+                <span className="mt-3 font-semibold text-primary">Izaberite fotografiju ili PDF</span>
+                <span className="mt-1 text-base text-muted-foreground">JPG, PNG ili PDF, do 20 MB. Možete dodati više nalaza, jedan po jedan.</span>
+              </>
+            )}
+            <input
+              id="lab-file"
+              type="file"
+              className="sr-only"
+              onChange={handleFileUpload}
+              disabled={isUploading}
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            />
+          </label>
+          <p className="mt-3 text-base text-muted-foreground">
+            Savet: slikajte nalaz na dnevnom svetlu, ceo list, tako da se tekst jasno vidi i nema odsjaja.
           </p>
+
+          {isLoading ? (
+            <Skeleton className="mt-4 h-16 w-full" />
+          ) : (
+            hasDocuments && (
+              <ul className="mt-4 divide-y rounded-lg border" aria-label="Dodati nalazi">
+                {documents.map((doc) => (
+                  <li key={doc.id} className="flex items-center gap-3 px-4 py-3">
+                    <CheckCircle2 className="size-6 shrink-0 text-success" aria-hidden="true" />
+                    <div className="min-w-0">
+                      <p className="break-words font-medium">{doc.originalFileName}</p>
+                      <p className="text-base text-muted-foreground">
+                        Dodato · {(doc.fileSizeBytes / 1024 / 1024).toFixed(1)} MB
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )
+          )}
         </div>
 
-        {showStrongWarning && (
-          <Alert className="mb-6 border-amber-200 bg-amber-50">
-            <AlertTriangle className="h-4 w-4 text-amber-700" />
-            <AlertTitle className="text-amber-900">Upozorenje o nalazima</AlertTitle>
-            <AlertDescription className="text-amber-800 leading-relaxed">
-              Za ovaj tip pregleda obično su potrebni skoriji laboratorijski nalazi. Bez njih doktor
-              možda neće moći da završi kompletnu procenu. Možete nastaviti ako dolazite iz drugog
-              razloga ili ćete nalaze doneti lično.
+        <div ref={statusRef} className="mt-8" role="group" aria-labelledby="lab-status-title">
+          <h2 id="lab-status-title" className="text-xl font-semibold">
+            {hasDocuments ? 'Da li ste dodali sve nalaze?' : 'Ako nemate nalaze za dodavanje'}
+          </h2>
+          <p className="mt-1 text-base text-muted-foreground">
+            {hasDocuments ? 'Ako neke nalaze donosite lično, izaberite to ispod.' : 'Izaberite šta važi za vas.'}
+          </p>
+          <RadioGroup
+            value={labStatus}
+            onValueChange={saveLabStatus}
+            className="mt-3 grid gap-3"
+            aria-labelledby="lab-status-title"
+            aria-invalid={statusError || undefined}
+          >
+            {options.map((opt) => (
+              <ChoiceRow key={opt.value} id={`lab-${opt.value}`} label={opt.label}>
+                <RadioGroupItem value={opt.value} id={`lab-${opt.value}`} disabled={labSaving} />
+              </ChoiceRow>
+            ))}
+          </RadioGroup>
+          {statusError && (
+            <p className="mt-3 text-base font-medium text-destructive" role="alert">
+              Dodajte nalaz ili izaberite jednu od opcija iznad, pa završite pripremu.
+            </p>
+          )}
+        </div>
+
+        {missingLabs && (
+          <Alert variant="warning" className="mt-6">
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>Bez nalaza pregled možda neće biti potpun</AlertTitle>
+            <AlertDescription>
+              Za ovaj pregled obično su potrebni skoriji nalazi. Bez njih doktor možda neće moći da završi celu procenu.
+              Možete nastaviti ako dolazite iz drugog razloga ili ćete nalaze doneti lično.
             </AlertDescription>
           </Alert>
         )}
-
-        <div className="bg-white border-2 border-dashed border-[#185e46]/20 rounded-3xl p-6 sm:p-8 text-center mb-4 hover:bg-[#185e46]/5 transition-colors relative min-h-[11rem]">
-          <input
-            type="file"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            onChange={handleFileUpload}
-            disabled={isUploading}
-            accept=".pdf,.jpg,.jpeg,.png"
-            aria-label="Dodaj dokument"
-          />
-          <div className="w-16 h-16 bg-[#185e46]/10 text-[#185e46] rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <FileUp size={32} />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">Dodirnite da dodate dokument</h3>
-          <p className="text-sm text-gray-500">PDF, JPG ili PNG (maksimalno 20MB)</p>
-
-          {isUploading && (
-            <div className="mt-4 flex items-center justify-center gap-2 text-[#185e46]">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent" />
-              <span>Otpremanje...</span>
-            </div>
-          )}
-        </div>
-
-        <p className="mb-8 text-sm text-gray-500 leading-relaxed">
-          Savet: možete dodati više fajlova jedan po jedan. Slikajte nalaz telefonom ako nemate PDF —
-          važno je da se tekst vidi jasno i bez odsjaja.
-        </p>
-
-        <div className="bg-white rounded-2xl border p-6 mb-8">
-          <h3 className="font-medium text-gray-900 mb-4">Status nalaza</h3>
-          <RadioGroup value={labStatus} onValueChange={saveLabStatus} className="space-y-3">
-            {LAB_OPTIONS.map((opt) => (
-              <div key={opt.value} className="flex items-center space-x-3 min-h-11">
-                <RadioGroupItem value={opt.value} id={opt.value} disabled={labSaving} />
-                <Label htmlFor={opt.value} className="font-normal cursor-pointer text-base">
-                  {opt.label}
-                </Label>
-              </div>
-            ))}
-          </RadioGroup>
-        </div>
-
-        <div className="space-y-3">
-          <h3 className="font-medium text-gray-900 px-2">Dodati dokumenti</h3>
-
-          {isLoading ? (
-            <Skeleton className="h-20 w-full rounded-2xl" />
-          ) : documents.length > 0 ? (
-            documents.map((doc) => (
-              <div key={doc.id} className="bg-white p-4 rounded-2xl border flex items-center gap-4 shadow-sm">
-                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
-                  <FileIcon size={24} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">{doc.originalFileName}</p>
-                  <p className="text-sm text-gray-500">{(doc.fileSizeBytes / 1024 / 1024).toFixed(2)} MB</p>
-                </div>
-                <CheckCircle2 className="text-green-500 shrink-0" size={24} />
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-8 text-gray-400 bg-white rounded-2xl border border-gray-100">
-              Još niste dodali nijedan dokument.
-            </div>
-          )}
-        </div>
-      </main>
-
-      <footer className="fixed bottom-0 w-full bg-white border-t p-4 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
-        <div className="max-w-2xl mx-auto flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
-          <Button variant="outline" onClick={() => setLocation(`/prepare/${token}/questionnaire`)} className="rounded-xl px-6 py-6 text-base w-full sm:w-auto min-h-12">
-            Vrati se na upitnik
-          </Button>
-          <Button onClick={handleFinish} className="bg-[#185e46] hover:bg-[#124a37] rounded-xl px-8 py-6 text-lg w-full sm:w-auto min-h-12">
-            Završi pripremu <ChevronRight size={20} className="ml-2" />
-          </Button>
-        </div>
-      </footer>
-    </div>
+      </section>
+    </PatientStepShell>
   );
 }

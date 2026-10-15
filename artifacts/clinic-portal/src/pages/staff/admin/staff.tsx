@@ -1,5 +1,7 @@
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { StaffLayout } from '../dashboard';
+import { StaffLayout, PageHeader } from '@/components/layout/staff-layout';
+import { EmptyState } from '@/components/empty-state';
+import { StatusBadge } from '@/components/status-badges';
 import { useListStaffUsers, useCreateStaffUser, getListStaffUsersQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -8,15 +10,13 @@ import { format } from 'date-fns';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Users, Shield, UserCircle } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { CheckCircle2, MinusCircle, Plus, Users } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { staffRoleLabel } from '@/lib/labels';
 import { normalizePersonName } from '@/lib/person-name';
@@ -57,7 +57,7 @@ export default function AdminStaffList() {
         form.reset();
       },
       onError: (err: any) => {
-        toast({ title: 'Kreiranje nije uspelo', description: err?.data?.error || 'Greška', variant: 'destructive' });
+        toast({ title: 'Nalog nije kreiran', description: err?.data?.error || 'Proverite podatke i pokušajte ponovo.', variant: 'destructive' });
       }
     });
   };
@@ -66,100 +66,115 @@ export default function AdminStaffList() {
 
   const rows = Array.isArray(staffList) ? staffList : [];
 
-  return (
-    <StaffLayout title="Upravljanje osobljem">
-      <div className="flex justify-between items-center mb-6">
-        <p className="text-gray-600">Uloge i nalozi osoblja klinike.</p>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2"><Plus size={16} /> Dodaj osoblje</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Novi nalog</DialogTitle></DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField control={form.control} name="fullName" render={({ field }) => (
-                  <FormItem><FormLabel>Ime i prezime</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="email" render={({ field }) => (
-                  <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="role" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Uloga</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                        <SelectContent>
-                          <SelectItem value="doctor">Doktor</SelectItem>
-                          <SelectItem value="nurse">Medicinska sestra</SelectItem>
-                          <SelectItem value="clinic_admin">Admin</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="phone" render={({ field }) => (
-                    <FormItem><FormLabel>Telefon (opciono)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                </div>
-                <FormField control={form.control} name="password" render={({ field }) => (
-                  <FormItem><FormLabel>Početna lozinka</FormLabel><FormControl><Input type="password" {...field} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <Button type="submit" className="w-full" disabled={createMutation.isPending}>Sačuvaj</Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
+  const addButton = (
+    <Button onClick={() => setOpen(true)}>
+      <Plus aria-hidden="true" />
+      Dodaj osoblje
+    </Button>
+  );
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-gray-50">
-              <TableRow>
-                <TableHead>Ime</TableHead>
-                <TableHead>Uloga</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Poslednja prijava</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-gray-400">
-                    Nema kreiranih naloga.
-                  </TableCell>
-                </TableRow>
-              )}
-              {rows.map((staff) => (
-                <TableRow key={staff.id}>
-                  <TableCell>
-                    <div className="font-medium text-gray-900">{normalizePersonName(staff.fullName)}</div>
-                    <div className="text-xs text-gray-500">{staff.email}</div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-sm">
-                      {staff.role === 'clinic_admin' ? <Shield size={14} className="text-red-500" /> : <UserCircle size={14} className="text-blue-500" />}
-                      {staffRoleLabel(staff.role)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={staff.isActive ? 'default' : 'secondary'} className={staff.isActive ? "bg-green-100 text-green-800 hover:bg-green-100" : ""}>
-                      {staff.isActive ? 'Aktivan' : 'Neaktivan'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-gray-500">
-                    {staff.lastLoginAt ? format(new Date(staff.lastLoginAt), 'dd.MM.yyyy') : 'Nikad'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+  return (
+    <StaffLayout>
+      <PageHeader title="Osoblje" description="Nalozi doktora, sestara i administracije klinike." actions={addButton} />
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Novi nalog</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField control={form.control} name="fullName" render={({ field }) => (
+                <FormItem><FormLabel>Ime i prezime</FormLabel><FormControl><Input autoComplete="name" {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="email" render={({ field }) => (
+                <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" autoComplete="email" {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField control={form.control} name="role" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Uloga</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="doctor">Doktor</SelectItem>
+                        <SelectItem value="nurse">Medicinska sestra</SelectItem>
+                        <SelectItem value="clinic_admin">Administrator</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="phone" render={({ field }) => (
+                  <FormItem><FormLabel>Telefon (nije obavezno)</FormLabel><FormControl><Input type="tel" inputMode="tel" {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="password" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Početna lozinka</FormLabel>
+                  <FormControl><Input type="password" autoComplete="new-password" {...field} /></FormControl>
+                  <p className="text-sm text-muted-foreground">Najmanje 12 karaktera. Osoba je menja posle prve prijave.</p>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Kreiram…' : 'Kreiraj nalog'}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <div className="overflow-hidden rounded-lg border bg-card">
+        {isLoading ? (
+          <div className="space-y-3 p-6" aria-busy="true">
+            <div className="h-6 w-1/2 animate-pulse rounded bg-muted" />
+            <div className="h-6 w-1/3 animate-pulse rounded bg-muted" />
           </div>
-        </CardContent>
-      </Card>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="Još nema naloga osoblja"
+            description="Dodajte doktora ili sestru da bi mogli da se prijave i vide pripreme pacijenata."
+            action={addButton}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/60">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Ime</TableHead>
+                  <TableHead className="hidden sm:table-cell">Uloga</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Poslednja prijava</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((staff) => (
+                  <TableRow key={staff.id}>
+                    <TableCell>
+                      <div className="font-medium">{normalizePersonName(staff.fullName)}</div>
+                      <div className="break-all text-sm text-muted-foreground">{staff.email}</div>
+                      <div className="text-sm text-muted-foreground sm:hidden">{staffRoleLabel(staff.role)}</div>
+                    </TableCell>
+                    <TableCell className="hidden whitespace-nowrap sm:table-cell">{staffRoleLabel(staff.role)}</TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        tone={staff.isActive ? 'success' : 'neutral'}
+                        icon={staff.isActive ? CheckCircle2 : MinusCircle}
+                        label={staff.isActive ? 'Aktivan' : 'Neaktivan'}
+                      />
+                    </TableCell>
+                    <TableCell className="hidden whitespace-nowrap text-muted-foreground md:table-cell">
+                      {staff.lastLoginAt ? format(new Date(staff.lastLoginAt), 'd. M. yyyy.') : 'Još se nije prijavio/la'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
     </StaffLayout>
   );
 }

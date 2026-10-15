@@ -6,7 +6,6 @@
  * cannot edit answers — this component intentionally contains no inputs.
  */
 import { useMemo } from 'react';
-import { Badge } from '@/components/ui/badge';
 import {
   countAnsweredQuestions,
   countMissingAnswers,
@@ -33,49 +32,48 @@ export function AnswersPanel({
 
   if (!answers || Object.keys(answers).length === 0) {
     return (
-      <div className={cn('rounded-xl border border-dashed bg-gray-50 p-6 text-center text-sm text-gray-500', className)}>
-        Pacijent još nije uneo odgovore.
+      <div className={cn('rounded-lg border bg-card px-6 py-10 text-center', className)}>
+        <p className="text-lg font-semibold">Pacijent još nije uneo odgovore</p>
+        <p className="mt-1 text-base text-muted-foreground">Odgovori će se pojaviti ovde čim pacijent sačuva prvi korak upitnika.</p>
       </div>
     );
   }
 
   return (
     <div className={cn('space-y-5', className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" className="border-gray-200 bg-gray-50 text-gray-700">
-          Odgovoreno: {answeredCount}
-        </Badge>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-base">
+        <span className="font-medium">{answeredCount} odgovoreno</span>
         {missingCount > 0 && (
-          <Badge variant="outline" className="gap-1 border-amber-200 bg-amber-50 text-amber-900">
-            <AlertTriangle size={12} aria-hidden="true" />
-            Bez odgovora: {missingCount}
-          </Badge>
+          <span className="inline-flex items-center gap-1.5 font-medium text-warning">
+            <AlertTriangle className="size-4" aria-hidden="true" />
+            {missingCount} bez odgovora
+          </span>
         )}
         {showReadOnlyHint && (
-          <span className="flex items-center gap-1 text-xs text-gray-500">
-            <Lock size={12} aria-hidden="true" />
-            Prikaz je samo za čitanje — odgovori pacijenta se ne mogu menjati.
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Lock className="size-4" aria-hidden="true" />
+            Samo za čitanje
           </span>
         )}
       </div>
 
       {groups.map((group) => (
-        <section key={group.sectionId} className="rounded-xl border bg-white p-4">
-          <header className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-            <h4 className="font-serif text-base font-semibold text-primary">{group.title}</h4>
-            <span className="text-xs text-gray-500">
-              {group.entries.length - group.missingCount} / {group.entries.length} odgovoreno
+        <section key={group.sectionId} className="rounded-lg border bg-card">
+          <header className="flex flex-wrap items-baseline justify-between gap-2 border-b px-4 py-3 md:px-6">
+            <h3 className="text-lg font-semibold">{group.title}</h3>
+            <span className="text-sm text-muted-foreground">
+              {group.entries.length - group.missingCount} od {group.entries.length}
             </span>
           </header>
 
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 px-4 py-4 md:grid-cols-2 md:px-6">
             {group.entries.map((entry) => (
               <div key={entry.questionId} className="min-w-0">
-                <dt className="text-xs text-gray-500">{entry.label}</dt>
+                <dt className="text-sm text-muted-foreground">{entry.label}</dt>
                 <dd
                   className={cn(
-                    'whitespace-pre-wrap text-sm',
-                    entry.missing ? 'italic text-amber-800' : 'font-medium text-gray-900'
+                    'mt-0.5 whitespace-pre-wrap break-words text-base',
+                    entry.missing ? 'italic text-warning' : 'font-medium text-foreground'
                   )}
                 >
                   {entry.text}

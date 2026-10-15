@@ -1,4 +1,4 @@
-import { CreateBucketCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { config } from "./config";
 import { logger } from "./logger";
 
@@ -57,4 +57,8 @@ export async function readS3Document(storageKey: string): Promise<Buffer> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
+}
+
+export async function deleteS3Document(storageKey: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({ Bucket: requireBucket(), Key: storageKey }));
 }

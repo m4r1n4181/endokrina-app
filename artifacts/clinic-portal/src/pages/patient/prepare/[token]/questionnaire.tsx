@@ -8,14 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ChevronRight, ChevronLeft, Save, FileText, Plus, Trash2, Lock } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ChevronLeft, ChevronRight, Info, Lock, Plus, Save } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PatientCard, PatientShell, PatientStepShell, PatientTitle } from '@/components/layout/patient-shell';
+import { ChoiceRow } from '@/components/choice-row';
 import { DateOfBirthField } from '@/components/date-of-birth-field';
 import { useToast } from '@/hooks/use-toast';
 import { normalizePersonName } from '@/lib/person-name';
 import {
+  answersForSchema,
   fetchQuestionnaireSchema,
   type MedicationRow,
   type Question,
@@ -104,10 +107,8 @@ export default function PrepareQuestionnaire() {
   const currentSection = sections[currentSectionIdx];
   const hasPrefilledProfile = Boolean(data?.prefill && Object.keys(data.prefill).length > 0);
   const hasExistingProfile = ['full_name', 'date_of_birth', 'sex'].some((key) => key in answers);
-  const profileTitle = hasPrefilledProfile || hasExistingProfile
-    ? 'Lični podaci (prefilirani — proverite tačnost)'
-    : 'Lični podaci';
-  const currentSectionTitle = currentSection?.id === 'stable_profile' ? profileTitle : currentSection?.title;
+  const profilePrefilled = hasPrefilledProfile || hasExistingProfile;
+  const currentSectionTitle = currentSection?.id === 'stable_profile' ? 'Lični podaci' : currentSection?.title;
   const hasPreviousMedication = Boolean(
     hasMedicationAnswers(data?.questionnaire?.answers?.current_thyroid_therapy) ||
     hasMedicationAnswers(data?.questionnaire?.answers?.other_medications),
@@ -125,19 +126,19 @@ export default function PrepareQuestionnaire() {
   const handleSave = async () => {
     if (!appointmentId) return;
     try {
-      await saveMutation.mutateAsync({ appointmentId, data: { answers } });
-      toast({ title: 'Sačuvano', description: 'Možete se vratiti i nastaviti kasnije.' });
+      await saveMutation.mutateAsync({ appointmentId, data: { answers: answersForSchema(schema, answers) } });
+      toast({ title: 'Sačuvano', description: 'Možete zatvoriti stranicu i nastaviti kasnije preko istog linka.' });
     } catch {
-      toast({ title: 'Greška pri čuvanju', variant: 'destructive' });
+      toast({ title: 'Odgovori nisu sačuvani', description: 'Proverite internet vezu i pokušajte ponovo.', variant: 'destructive' });
     }
   };
 
   const handleNext = async () => {
     if (!appointmentId) return;
     try {
-      await saveMutation.mutateAsync({ appointmentId, data: { answers } });
+      await saveMutation.mutateAsync({ appointmentId, data: { answers: answersForSchema(schema, answers) } });
     } catch {
-      toast({ title: 'Greška pri čuvanju', variant: 'destructive' });
+      toast({ title: 'Odgovori nisu sačuvani', description: 'Proverite internet vezu i pokušajte ponovo.', variant: 'destructive' });
       return;
     }
 
@@ -148,10 +149,11 @@ export default function PrepareQuestionnaire() {
     }
 
     submitMutation.mutate(
-      { appointmentId, data: { answers } },
+      { appointmentId, data: { answers: answersForSchema(schema, answers) } },
       {
         onSuccess: () => setLocation(`/prepare/${token}/documents`),
-        onError: () => toast({ title: 'Greška pri slanju', variant: 'destructive' }),
+        onError: () =>
+          toast({ title: 'Upitnik nije poslat', description: 'Odgovori su sačuvani. Pokušajte ponovo za minut.', variant: 'destructive' }),
       }
     );
   };
@@ -159,7 +161,7 @@ export default function PrepareQuestionnaire() {
   const handlePrev = async () => {
     if (appointmentId) {
       try {
-        await saveMutation.mutateAsync({ appointmentId, data: { answers } });
+        await saveMutation.mutateAsync({ appointmentId, data: { answers: answersForSchema(schema, answers) } });
       } catch {
         /* ignore */
       }
@@ -172,227 +174,233 @@ export default function PrepareQuestionnaire() {
 
   if (isLoading || schemaLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 pt-12">
-        <div className="max-w-3xl mx-auto">
-          <Skeleton className="h-96 w-full rounded-3xl" />
-        </div>
-      </div>
+      <PatientShell>
+        <PatientCard>
+          <div className="space-y-4" aria-busy="true" aria-label="Učitavanje upitnika">
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
+        </PatientCard>
+      </PatientShell>
     );
   }
 
   if (data?.isLocked) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md bg-white p-8 rounded-3xl text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
-            <Lock className="h-8 w-8 text-amber-600" aria-hidden="true" />
-          </div>
-          <h2 className="text-2xl font-serif text-gray-900 mb-2">Upitnik je zaključan</h2>
-          <p className="text-gray-600 mb-2 text-lg leading-relaxed">
-            Ovaj upitnik je zaključan jer je vreme pregleda počelo. Ako je potrebno da nešto važno
-            ispravite, pozovite kliniku i oni mogu da ga ponovo otvore.
+      <PatientShell>
+        <PatientCard>
+          <Lock className="mb-4 size-8 text-muted-foreground" aria-hidden="true" />
+          <PatientTitle>Upitnik je zaključan</PatientTitle>
+          <p className="mt-3">
+            Upitnik je zaključan jer je vreme pregleda počelo. Ako nešto važno treba da se ispravi, pozovite kliniku —
+            mogu ponovo da ga otvore.
           </p>
-          <p className="text-sm text-gray-500 mb-6">
-            Odgovori koje ste poslali ostaju sačuvani i doktor ih vidi pre pregleda.
-          </p>
-          <Button
-            className="w-full bg-[#185e46] hover:bg-[#124a37] py-6 text-lg rounded-xl"
-            onClick={() => setLocation(`/prepare/${token}/documents`)}
-          >
-            Nastavi na dokumenta
+          <p className="mt-3 text-muted-foreground">Odgovori koje ste poslali su sačuvani i doktor ih vidi.</p>
+          <Button variant="outline" size="lg" className="mt-8 w-full" onClick={() => setLocation(`/prepare/${token}/done`)}>
+            Pogledaj pregled pripreme
           </Button>
-        </div>
-      </div>
+        </PatientCard>
+      </PatientShell>
     );
   }
 
   if (!currentSection) {
-    return <div className="p-8 text-center text-gray-500">Upitnik nije dostupan.</div>;
+    return (
+      <PatientShell>
+        <PatientCard>
+          <PatientTitle>Upitnik trenutno nije dostupan</PatientTitle>
+          <p className="mt-3 text-muted-foreground">
+            Pokušajte ponovo za nekoliko minuta. Ako se ovo ponovi, pozovite kliniku.
+          </p>
+        </PatientCard>
+      </PatientShell>
+    );
   }
+
+  const isLastStep = currentSectionIdx === sections.length - 1;
 
   const renderQuestion = (q: Question) => {
     const val = answers[q.id];
+    const labelId = `${q.id}-label`;
+    const showHint = q.hint && (!q.mustConfirm || hasPreviousMedication);
 
     return (
-      <div key={q.id} className="mb-6 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-        <Label className="text-base font-medium text-gray-800 mb-1 block">{q.label}</Label>
-        {q.hint && (!q.mustConfirm || hasPreviousMedication) && (
-          <p className="text-sm text-gray-500 mb-3">{q.hint}</p>
-        )}
-        {q.mustConfirm && hasPreviousMedication && (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3 mb-3">
-            Prošli put ste naveli da uzimate ovaj lek. Da li ga i dalje uzimate u istoj dozi? Potvrdite, izmenite ili uklonite.
+      <div key={q.id} role="group" aria-labelledby={labelId} className="py-6 first:pt-2 last:pb-0">
+        {q.type === 'free_text' || q.type === 'date' ? (
+          <Label id={labelId} htmlFor={q.id} className="block text-lg font-semibold leading-snug">
+            {q.label}
+          </Label>
+        ) : (
+          <p id={labelId} className="text-lg font-semibold leading-snug">
+            {q.label}
           </p>
         )}
+        {showHint && <p className="mt-1 text-base text-muted-foreground">{q.hint}</p>}
 
-        {q.type === 'date' && (
-          <div className="mt-2">
-            <DateOfBirthField
-              variant="patient"
-              value={(val as string) || ''}
-              onChange={(value) => setAnswer(q.id, value)}
-            />
-          </div>
+        {q.mustConfirm && hasPreviousMedication && (
+          <Alert variant="info" className="mt-3">
+            <Info aria-hidden="true" />
+            <AlertDescription>
+              Prošli put ste naveli ovaj lek. Da li ga i dalje uzimate u istoj dozi? Potvrdite, izmenite ili uklonite.
+            </AlertDescription>
+          </Alert>
         )}
 
-        {q.type === 'free_text' && (
-          q.id === 'full_name' ? (
-            <Input
-              type="text"
-              value={(val as string) || ''}
-              onChange={(e) => setAnswer(q.id, e.target.value)}
-              onBlur={() => typeof val === 'string' && setAnswer(q.id, normalizePersonName(val))}
-              className="bg-gray-50 text-base py-6"
-            />
-          ) : (
-            <Textarea
-              value={(val as string) || ''}
-              onChange={(e) => setAnswer(q.id, e.target.value)}
-              rows={4}
-              className="bg-gray-50 text-base"
-            />
-          )
-        )}
+        <div className="mt-3">
+          {q.type === 'date' && (
+            <DateOfBirthField variant="patient" value={(val as string) || ''} onChange={(value) => setAnswer(q.id, value)} />
+          )}
 
-        {q.type === 'boolean' && (
-          <div className="flex items-center gap-3 mt-2">
-            <span className="text-sm text-gray-500">Ne</span>
-            <Switch checked={val === true} onCheckedChange={(checked) => setAnswer(q.id, checked)} />
-            <span className="text-sm font-medium text-gray-900">Da</span>
-          </div>
-        )}
-
-        {q.type === 'single_choice' && q.options && (
-          <RadioGroup
-            value={(val as string) || ''}
-            onValueChange={(v) => setAnswer(q.id, v)}
-            className="flex flex-col gap-3 mt-2"
-          >
-            {q.options.map((opt) => (
-              <div key={opt.value} className="flex items-center space-x-3 min-h-11">
-                <RadioGroupItem value={opt.value} id={`${q.id}-${opt.value}`} />
-                <Label htmlFor={`${q.id}-${opt.value}`} className="font-normal cursor-pointer text-base">
-                  {opt.label}
-                </Label>
-              </div>
+          {q.type === 'free_text' &&
+            (q.id === 'full_name' ? (
+              <Input
+                id={q.id}
+                type="text"
+                autoComplete="name"
+                value={(val as string) || ''}
+                onChange={(e) => setAnswer(q.id, e.target.value)}
+                onBlur={() => typeof val === 'string' && setAnswer(q.id, normalizePersonName(val))}
+                className="h-14 text-lg"
+              />
+            ) : (
+              <Textarea
+                id={q.id}
+                value={(val as string) || ''}
+                onChange={(e) => setAnswer(q.id, e.target.value)}
+                rows={4}
+                className="text-lg"
+              />
             ))}
-          </RadioGroup>
-        )}
 
-        {q.type === 'multi_choice' && q.options && (
-          <div className="flex flex-col gap-3 mt-2">
-            {q.options.map((opt) => {
-              const selected = Array.isArray(val) && val.includes(opt.value);
-              return (
-                <label key={opt.value} className="flex items-center gap-3 min-h-11 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="h-5 w-5"
-                    checked={!!selected}
-                    onChange={(e) => {
-                      const current = Array.isArray(val) ? [...val] : [];
-                      if (e.target.checked) setAnswer(q.id, [...current, opt.value]);
-                      else setAnswer(q.id, current.filter((x) => x !== opt.value));
-                    }}
-                  />
-                  <span className="text-base">{opt.label}</span>
-                </label>
-              );
-            })}
-          </div>
-        )}
+          {q.type === 'boolean' && (
+            <RadioGroup
+              value={val === true ? 'true' : val === false ? 'false' : ''}
+              onValueChange={(v) => setAnswer(q.id, v === 'true')}
+              className="grid grid-cols-2 gap-3"
+              aria-labelledby={labelId}
+            >
+              {[
+                { value: 'true', label: 'Da' },
+                { value: 'false', label: 'Ne' },
+              ].map((opt) => (
+                <ChoiceRow key={opt.value} id={`${q.id}-${opt.value}`} label={opt.label}>
+                  <RadioGroupItem value={opt.value} id={`${q.id}-${opt.value}`} />
+                </ChoiceRow>
+              ))}
+            </RadioGroup>
+          )}
 
-        {q.type === 'medication_list' && (
-          <MedicationListEditor
-            value={Array.isArray(val) ? (val as MedRow[]) : []}
-            onChange={(rows) => setAnswer(q.id, rows)}
-          />
-        )}
+          {q.type === 'single_choice' && q.options && (
+            <RadioGroup
+              value={(val as string) || ''}
+              onValueChange={(v) => setAnswer(q.id, v)}
+              className="grid gap-3"
+              aria-labelledby={labelId}
+            >
+              {q.options.map((opt) => (
+                <ChoiceRow key={opt.value} id={`${q.id}-${opt.value}`} label={opt.label}>
+                  <RadioGroupItem value={opt.value} id={`${q.id}-${opt.value}`} />
+                </ChoiceRow>
+              ))}
+            </RadioGroup>
+          )}
+
+          {q.type === 'multi_choice' && q.options && (
+            <div className="grid gap-3">
+              {q.options.map((opt) => {
+                const selected = Array.isArray(val) && val.includes(opt.value);
+                return (
+                  <ChoiceRow key={opt.value} id={`${q.id}-${opt.value}`} label={opt.label}>
+                    <input
+                      id={`${q.id}-${opt.value}`}
+                      type="checkbox"
+                      className="size-5 shrink-0 accent-primary"
+                      checked={!!selected}
+                      onChange={(e) => {
+                        const current = Array.isArray(val) ? [...val] : [];
+                        if (e.target.checked) setAnswer(q.id, [...current, opt.value]);
+                        else setAnswer(q.id, current.filter((x) => x !== opt.value));
+                      }}
+                    />
+                  </ChoiceRow>
+                );
+              })}
+            </div>
+          )}
+
+          {q.type === 'medication_list' && (
+            <MedicationListEditor
+              questionId={q.id}
+              value={Array.isArray(val) ? (val as MedRow[]) : []}
+              onChange={(rows) => setAnswer(q.id, rows)}
+            />
+          )}
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-28">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[#185e46] font-serif font-medium">
-            <FileText size={20} /> Priprema za pregled
-          </div>
-          <div className="text-sm text-gray-500">
-            Korak {currentSectionIdx + 1} od {sections.length}
-          </div>
-        </div>
-        <div className="h-1 w-full bg-gray-100">
-          <div
-            className="h-full bg-[#185e46] transition-all duration-500 ease-out"
-            style={{ width: `${((currentSectionIdx + 1) / sections.length) * 100}%` }}
-          />
-        </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto px-4 pt-6 sm:pt-8">
-        <p className="mb-2 text-sm text-gray-500 leading-relaxed">
-          Ovaj formular pomaže vašem doktoru da se pripremi za pregled. On ne zamenjuje medicinski pregled
-          ili zvaničnu evidenciju klinike.
-        </p>
-        <p className="mb-6 text-xs text-gray-400">
-          Odgovori su ono što ste sami prijavili; doktor ih vidi pre pregleda.
-        </p>
-        <h2 className="text-xl sm:text-2xl font-serif text-gray-900 mb-4 sm:mb-6">{currentSectionTitle}</h2>
-        <div className="space-y-2">{visibleQuestions.map(renderQuestion)}</div>
-      </main>
-
-      <footer className="fixed bottom-0 w-full bg-white border-t p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
-        <div className="max-w-3xl mx-auto flex justify-between items-center gap-2">
+    <PatientStepShell
+      step={currentSectionIdx + 1}
+      totalSteps={sections.length + 1 /* + the lab results step */}
+      headerAction={
+        <Button variant="ghost" onClick={handleSave} disabled={saveMutation.isPending} className="-mr-2 text-primary">
+          <Save aria-hidden="true" />
+          {saveMutation.isPending ? 'Čuvam…' : 'Sačuvaj'}
+        </Button>
+      }
+      actions={
+        <>
           <Button
             variant="outline"
+            size="xl"
             onClick={handlePrev}
             disabled={currentSectionIdx === 0}
-            className="rounded-xl px-4 sm:px-6 min-h-12"
+            className="px-4"
+            aria-label="Prethodni korak"
           >
-            <ChevronLeft size={18} className="sm:mr-2" aria-hidden="true" />
+            <ChevronLeft aria-hidden="true" />
             <span className="hidden sm:inline">Nazad</span>
           </Button>
-
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              onClick={handleSave}
-              disabled={saveMutation.isPending}
-              aria-label="Sačuvaj i nastavi kasnije"
-              className="text-gray-600 min-h-12 rounded-xl px-3 sm:px-4"
-            >
-              <Save size={18} className="sm:mr-2" aria-hidden="true" />
-              <span className="hidden sm:inline">
-                {saveMutation.isPending ? 'Čuvam...' : 'Sačuvaj'}
-              </span>
-            </Button>
-            <Button
-              onClick={handleNext}
-              disabled={submitMutation.isPending || saveMutation.isPending}
-              className="bg-[#185e46] hover:bg-[#124a37] rounded-xl px-6 sm:px-8 min-h-12 text-base"
-            >
-              {currentSectionIdx === sections.length - 1
-                ? submitMutation.isPending
-                  ? 'Slanje...'
-                  : 'Završi i pošalji'
-                : 'Dalje'}
-              {currentSectionIdx !== sections.length - 1 && (
-                <ChevronRight size={18} className="ml-1 sm:ml-2" aria-hidden="true" />
-              )}
-            </Button>
-          </div>
-        </div>
-        <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-gray-500">
-          Možete sačuvati i vratiti se kasnije preko istog linka, dok se pregled ne zaključa.
-        </p>
-      </footer>
-    </div>
+          <Button
+            size="xl"
+            className="flex-1"
+            onClick={handleNext}
+            disabled={submitMutation.isPending || saveMutation.isPending}
+          >
+            {isLastStep ? (submitMutation.isPending ? 'Šaljem…' : 'Pošalji i nastavi na nalaze') : 'Dalje'}
+            {!isLastStep && <ChevronRight aria-hidden="true" />}
+          </Button>
+        </>
+      }
+    >
+      <section className="rounded-xl border bg-card px-5 py-6 sm:px-8 sm:py-8">
+        <PatientTitle>{currentSectionTitle}</PatientTitle>
+        {currentSection.id === 'stable_profile' && (
+          <p className="mt-2 text-muted-foreground">
+            {profilePrefilled
+              ? 'Popunili smo ono što već znamo o vama — proverite da li je tačno i ispravite ako nije.'
+              : 'Odgovore čuvamo na svakom koraku, pa možete prekinuti i nastaviti kasnije.'}
+          </p>
+        )}
+        <div className="mt-4 divide-y">{visibleQuestions.map(renderQuestion)}</div>
+      </section>
+    </PatientStepShell>
   );
 }
 
-function MedicationListEditor({ value, onChange }: { value: MedRow[]; onChange: (v: MedRow[]) => void }) {
+function MedicationListEditor({
+  questionId,
+  value,
+  onChange,
+}: {
+  questionId: string;
+  value: MedRow[];
+  onChange: (v: MedRow[]) => void;
+}) {
   const rows = value.length ? value : [{ name: '', dose: '', frequency: '' }];
 
   const update = (idx: number, patch: Partial<MedRow>) => {
@@ -401,40 +409,48 @@ function MedicationListEditor({ value, onChange }: { value: MedRow[]; onChange: 
   };
 
   return (
-    <div className="space-y-3 mt-2">
-      {rows.map((row, idx) => (
-        <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
-          <div>
-            <Label className="text-xs text-gray-500">Lek</Label>
-            <Input value={row.name} onChange={(e) => update(idx, { name: e.target.value })} className="bg-gray-50" placeholder="npr. Euthyrox" />
+    <div className="space-y-3">
+      {rows.map((row, idx) => {
+        const base = `${questionId}-${idx}`;
+        return (
+          <div key={idx} className="rounded-lg border bg-muted/40 p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor={`${base}-name`}>Lek</Label>
+                <Input id={`${base}-name`} value={row.name} onChange={(e) => update(idx, { name: e.target.value })} placeholder="npr. Euthyrox" className="h-12 text-lg" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`${base}-dose`}>Doza</Label>
+                <Input id={`${base}-dose`} value={row.dose} onChange={(e) => update(idx, { dose: e.target.value })} placeholder="npr. 75 mcg" className="h-12 text-lg" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`${base}-frequency`}>Koliko često</Label>
+                <Input id={`${base}-frequency`} value={row.frequency} onChange={(e) => update(idx, { frequency: e.target.value })} placeholder="npr. jednom dnevno" className="h-12 text-lg" />
+              </div>
+            </div>
+            {(rows.length > 1 || row.name) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-2 -ml-2 text-destructive hover:bg-destructive-soft"
+                onClick={() => onChange(rows.filter((_, i) => i !== idx))}
+              >
+                Ukloni ovaj lek
+              </Button>
+            )}
           </div>
-          <div>
-            <Label className="text-xs text-gray-500">Doza</Label>
-            <Input value={row.dose} onChange={(e) => update(idx, { dose: e.target.value })} className="bg-gray-50" placeholder="npr. 75 mcg" />
-          </div>
-          <div>
-            <Label className="text-xs text-gray-500">Učestalost</Label>
-            <Input value={row.frequency} onChange={(e) => update(idx, { frequency: e.target.value })} className="bg-gray-50" placeholder="npr. 1x dnevno" />
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="text-red-500"
-            onClick={() => onChange(rows.filter((_, i) => i !== idx))}
-            disabled={rows.length <= 1 && !row.name}
-          >
-            <Trash2 size={16} />
-          </Button>
-        </div>
-      ))}
+        );
+      })}
       <Button
         type="button"
         variant="outline"
+        size="lg"
         className="w-full"
         onClick={() => onChange([...rows, { name: '', dose: '', frequency: '' }])}
       >
-        <Plus size={16} className="mr-2" /> Dodaj lek
+        <Plus aria-hidden="true" />
+        Dodaj još jedan lek
       </Button>
     </div>
   );

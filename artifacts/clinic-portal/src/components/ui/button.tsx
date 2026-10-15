@@ -4,29 +4,24 @@ import { cn } from '@/lib/utils';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0' +
-    ' hover-elevate active-elevate-2',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-base font-medium leading-tight transition-colors duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-[1.125rem] [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        default:
-          'bg-primary text-primary-foreground border border-primary-border',
-        destructive:
-          'bg-destructive text-destructive-foreground shadow-sm border-destructive-border',
-        outline:
-          // Inherits the current text color. Uses shadow-xs. no shadow on active
-          // No hover state
-          ' border [border-color:var(--button-outline)] shadow-xs active:shadow-none ',
-        secondary:
-          'border bg-secondary text-secondary-foreground border border-secondary-border ',
-        ghost: 'border border-transparent',
-        link: 'text-primary underline-offset-4 hover:underline',
+        default: 'bg-primary text-primary-foreground hover:bg-primary-hover',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        outline: 'border border-input bg-card text-foreground hover:bg-muted',
+        secondary: 'bg-primary-soft text-primary hover:bg-primary-soft/70',
+        ghost: 'text-foreground hover:bg-muted',
+        link: 'text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary',
       },
       size: {
-        default: 'min-h-9 px-4 py-2',
-        sm: 'min-h-8 rounded-md px-3 text-xs',
-        lg: 'min-h-10 rounded-md px-8',
-        icon: 'h-9 w-9',
+        default: 'min-h-11 px-4 py-2',
+        sm: 'min-h-9 px-3 text-sm',
+        lg: 'min-h-12 px-6',
+        /** Patient flow: the one primary action on a step — 56px, 18px label. */
+        xl: 'min-h-14 px-6 text-lg rounded-lg',
+        icon: 'h-11 w-11',
       },
     },
     defaultVariants: {

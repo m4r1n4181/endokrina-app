@@ -1,8 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { config } from './config';
-import { readS3Document, saveS3Document } from './s3-document-storage';
+import { deleteS3Document, readS3Document, saveS3Document } from './s3-document-storage';
 
 const STUB_STORAGE_ROOT = path.join(os.tmpdir(), 'foundation-phase-one', 'uploaded-documents');
 
@@ -28,4 +28,10 @@ export async function saveDocument(storageKey: string, fileBytes: Buffer, conten
 export async function readDocument(storageKey: string): Promise<Buffer> {
   if (config.STORAGE_PROVIDER === 's3') return readS3Document(storageKey);
   return readStubDocument(storageKey);
+}
+
+/** Used by the demo reset only — patient documents are otherwise never deleted. */
+export async function deleteDocument(storageKey: string): Promise<void> {
+  if (config.STORAGE_PROVIDER === 's3') return deleteS3Document(storageKey);
+  await rm(getStubDocumentPath(storageKey), { force: true });
 }

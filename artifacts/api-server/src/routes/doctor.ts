@@ -3,7 +3,7 @@
  * All endpoints here are doctor-only (RBAC enforced server-side).
  * Every clinical content access is audit logged.
  */
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { db, summariesTable, uploadedDocumentsTable, appointmentsTable, questionnairesTable, patientsTable, AUDIT_ACTIONS } from "../lib/db";
 import { eq, and, ne } from "drizzle-orm";
 import { requireStaffAuth } from "../middlewares/authenticate";
@@ -11,10 +11,70 @@ import { clinicalContentGuard } from "../middlewares/rbac";
 import { writeAuditLog, userAuditCtx } from "../services/audit";
 import { extractClientIp } from "../middlewares/audit-middleware";
 import { readDocument } from "../lib/document-storage";
+import { createDocumentLinkToken, verifyDocumentLinkToken } from "../services/document-link";
 
 const router = Router();
 
-// All doctor routes require staff auth + doctor role
+/** Sends a stored document with headers every browser accepts (names may contain č, ć, š, ž, đ). */
+function sendDocument(
+  res: Response,
+  doc: { detectedMime: string; originalFileName: string },
+  disposition: "inline" | "attachment",
+  fileBytes: Buffer
+): void {
+  res.setHeader("Content-Type", doc.detectedMime);
+  // Header values must be ASCII: a name like "Nalaz_štitasta.pdf" made setHeader throw (500).
+  // ASCII fallback for old clients + RFC 5987 filename* with the real UTF-8 name.
+  const asciiFileName = doc.originalFileName.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+  res.setHeader(
+    "Content-Disposition",
+    `${disposition}; filename="${asciiFileName}"; filename*=UTF-8''${encodeURIComponent(doc.originalFileName)}`
+  );
+  res.setHeader("Cache-Control", "private, no-store");
+  res.send(fileBytes);
+}
+
+// GET /api/doctor/files/:token — open/download one document through a short-lived signed link.
+// Registered BEFORE the auth middleware on purpose: the signed token (minted by the authenticated
+// /download endpoint below) is the authorisation, because a plain link cannot carry a Bearer header.
+router.get("/files/:token", async (req, res, next) => {
+  try {
+    const link = verifyDocumentLinkToken(String(req.params.token ?? ""));
+    if (!link) {
+      res.status(410).json({ error: "Link expired or invalid", code: "DOCUMENT_LINK_INVALID" });
+      return;
+    }
+    const disposition = req.query.disposition === "inline" ? "inline" : "attachment";
+
+    const [doc] = await db
+      .select()
+      .from(uploadedDocumentsTable)
+      .where(and(eq(uploadedDocumentsTable.id, link.d), eq(uploadedDocumentsTable.appointmentId, link.a)))
+      .limit(1);
+
+    if (!doc || doc.deletedAt) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+
+    const fileBytes = await readDocument(doc.storageKey);
+
+    await writeAuditLog({
+      ctx: userAuditCtx(link.u, link.r, extractClientIp(req)),
+      action: AUDIT_ACTIONS.DOCUMENT_DOWNLOAD,
+      targetType: "document",
+      targetId: doc.id,
+      outcome: "success",
+      context: { disposition, via: "signed_link" },
+    });
+
+    sendDocument(res, doc, disposition, fileBytes);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// All other doctor routes require staff auth + doctor role
 router.use(requireStaffAuth, clinicalContentGuard);
 
 // GET /api/doctor/appointments/:id/summaries — view both summary variants
@@ -117,11 +177,13 @@ router.get("/appointments/:id/documents/:docId/download", async (req, res, next)
       outcome: "success",
     });
 
+    const linkToken = createDocumentLinkToken({ d: doc.id, a: id, u: userId, r: req.user!.role });
     res.json({
-      downloadUrl: `/api/doctor/appointments/${id}/documents/${docId}/file`,
+      // Short-lived signed link: works as a plain URL on every browser, including iPhone.
+      downloadUrl: `/api/doctor/files/${linkToken}`,
       fileName: doc.originalFileName,
       mimeType: doc.detectedMime,
-      _note: "Use the file endpoint for download/view.",
+      _note: "Append ?disposition=inline to view, ?disposition=attachment to download. Expires in 2 minutes.",
     });
   } catch (err) {
     next(err);
@@ -163,10 +225,7 @@ router.get("/appointments/:id/documents/:docId/file", async (req, res, next) => 
       context: { disposition },
     });
 
-    res.setHeader("Content-Type", doc.detectedMime);
-    const safeFileName = doc.originalFileName.replace(/"/g, '\\"');
-    res.setHeader("Content-Disposition", `${disposition}; filename="${safeFileName}"`);
-    res.send(fileBytes);
+    sendDocument(res, doc, disposition, fileBytes);
   } catch (err) {
     next(err);
   }

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { ShieldCheck, Mail } from 'lucide-react';
-import { StaffLayout } from './dashboard';
+import { CheckCircle2, Mail, MinusCircle } from 'lucide-react';
+import { StaffLayout, PageHeader } from '@/components/layout/staff-layout';
+import { StatusBadge } from '@/components/status-badges';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useStaffAuth } from '@/hooks/use-staff-auth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -10,22 +10,23 @@ export default function StaffSecurity() {
   const { user } = useStaffAuth();
   const { toast } = useToast();
   const [pending, setPending] = useState(false);
+  const enabled = Boolean(user?.mfaEnabled);
 
-  const setMfa = async (enabled: boolean) => {
+  const setMfa = async (next: boolean) => {
     setPending(true);
     try {
       const response = await fetch('/api/auth/me/mfa', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({ enabled: next }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Promena nije uspela');
-      toast({ title: enabled ? 'Email MFA je uključena' : 'Email MFA je isključena' });
+      toast({ title: next ? 'Kod na email je uključen' : 'Kod na email je isključen' });
       window.location.reload();
     } catch (error) {
       toast({
-        title: 'Promena nije uspela',
+        title: 'Promena nije sačuvana',
         description: error instanceof Error ? error.message : 'Pokušajte ponovo.',
         variant: 'destructive',
       });
@@ -35,40 +36,38 @@ export default function StaffSecurity() {
   };
 
   return (
-    <StaffLayout title="Bezbednost naloga">
-      <div className="max-w-2xl">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
-                <ShieldCheck size={22} />
+    <StaffLayout>
+      <PageHeader title="Bezbednost naloga" description="Podešavanja prijave za vaš nalog." />
+
+      <section className="max-w-2xl divide-y rounded-lg border bg-card">
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between md:p-6">
+          <div className="flex gap-4">
+            <Mail className="mt-0.5 size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold">Kod za prijavu na email</h2>
+                <StatusBadge
+                  tone={enabled ? 'success' : 'neutral'}
+                  icon={enabled ? CheckCircle2 : MinusCircle}
+                  label={enabled ? 'Uključeno' : 'Isključeno'}
+                />
               </div>
-              <div>
-                <CardTitle>Email verifikacija</CardTitle>
-                <CardDescription>Dodatna zaštita za prijavu na portal.</CardDescription>
-              </div>
+              <p className="mt-1 max-w-prose text-base text-muted-foreground">
+                Pri svakoj prijavi, posle lozinke, šaljemo jednokratni kod na {user?.email ?? 'vaš email'}. Tako niko
+                ne može da uđe u nalog samo sa lozinkom.
+              </p>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="flex items-start gap-3 rounded-lg border bg-gray-50 p-4">
-              <Mail size={20} className="mt-0.5 text-primary" />
-              <div className="text-sm">
-                <p className="font-medium">{user?.mfaEnabled ? 'MFA je uključena' : 'MFA je isključena'}</p>
-                <p className="text-gray-600 mt-1">
-                  Kod za prijavu biće poslat na email adresu naloga ({user?.email}).
-                </p>
-              </div>
-            </div>
-            <Button
-              variant={user?.mfaEnabled ? 'outline' : 'default'}
-              disabled={pending}
-              onClick={() => setMfa(!user?.mfaEnabled)}
-            >
-              {pending ? 'Ažuriranje...' : user?.mfaEnabled ? 'Isključi email MFA' : 'Uključi email MFA'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+          <Button
+            variant={enabled ? 'outline' : 'default'}
+            disabled={pending}
+            onClick={() => setMfa(!enabled)}
+            className="shrink-0"
+          >
+            {pending ? 'Čuvam…' : enabled ? 'Isključi' : 'Uključi'}
+          </Button>
+        </div>
+      </section>
     </StaffLayout>
   );
 }
