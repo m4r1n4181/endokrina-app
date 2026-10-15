@@ -29,11 +29,38 @@ $RuleName = 'reset-demo-' + (Get-Date -Format 'yyyyMMddHHmmss')
 
 function Step([string]$Message) { Write-Host "[$(Get-Date -Format HH:mm:ss)] $Message" }
 
+# Windows PowerShell 5.1 turns ANY stderr line of a native command (e.g. az's "You have 2 update(s)
+# available" warning) into a terminating error while $ErrorActionPreference is 'Stop' — even when it
+# is redirected to $null. So every native call runs with 'Continue' and is judged by its exit code.
+function Invoke-Native {
+  param([string]$Exe, [string[]]$Arguments)
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $output = & $Exe @Arguments 2>$null
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previous
+  }
+  return [pscustomobject]@{ Output = $output; ExitCode = $code }
+}
+
 function Invoke-Az {
   # Runs az, fails on a non-zero exit, returns stdout only (warnings go to stderr and are dropped).
-  $output = & az @args --only-show-errors 2>$null
-  if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') nije uspio (exit $LASTEXITCODE)." }
-  return $output
+  $result = Invoke-Native -Exe 'az' -Arguments ($args + '--only-show-errors')
+  if ($result.ExitCode -ne 0) { throw "az $($args -join ' ') nije uspio (exit $($result.ExitCode))." }
+  return $result.Output
+}
+
+# Azure CLI is renaming the firewall-rule flags (server: -n -> --server-name, rule: --rule-name -> --name).
+# Its --help text already mentions --server-name in a deprecation warning, so it cannot be used to detect
+# the version. Instead: try today's syntax, and if the CLI rejects it, the new one.
+function Invoke-FirewallRule([string]$Action, [string[]]$Extra) {
+  $base = @('postgres', 'flexible-server', 'firewall-rule', $Action, '-g', $RG)
+  $current = Invoke-Native -Exe 'az' -Arguments ($base + @('--name', $PgServer, '--rule-name', $RuleName) + $Extra + @('-o', 'none', '--only-show-errors'))
+  if ($current.ExitCode -eq 0) { return $true }
+  $renamed = Invoke-Native -Exe 'az' -Arguments ($base + @('--server-name', $PgServer, '--name', $RuleName) + $Extra + @('-o', 'none', '--only-show-errors'))
+  return ($renamed.ExitCode -eq 0)
 }
 
 if (-not (Test-Path '.\package.json') -or -not (Test-Path '.\artifacts\api-server')) {
@@ -83,29 +110,29 @@ $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org').ToString().Trim()
 $ruleCreated = $false
 try {
   Step "Otvaram firewall baze za $ip (pravilo $RuleName)..."
-  $help = (& az postgres flexible-server firewall-rule create --help 2>$null) -join "`n"
-  if ($help -match '--server-name') {
-    Invoke-Az postgres flexible-server firewall-rule create -g $RG -s $PgServer -n $RuleName --start-ip-address $ip --end-ip-address $ip -o none | Out-Null
-  } else {
-    Invoke-Az postgres flexible-server firewall-rule create -g $RG -n $PgServer --rule-name $RuleName --start-ip-address $ip --end-ip-address $ip -o none | Out-Null
+  if (-not (Invoke-FirewallRule 'create' @('--start-ip-address', $ip, '--end-ip-address', $ip))) {
+    throw "Firewall pravilo nije napravljeno. Provjeri 'az login' i prava na $PgServer."
   }
   $ruleCreated = $true
 
   Step 'Osvjezavam demo podatke...'
-  & pnpm run db:reset:demo
-  if ($LASTEXITCODE -ne 0) { throw "Reset nije uspio (exit $LASTEXITCODE). Mozes ga pokrenuti ponovo - brise samo demo podatke." }
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'   # pnpm/node warnings on stderr must not abort (see Invoke-Native)
+  try {
+    & pnpm run db:reset:demo
+    $resetExit = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previous
+  }
+  if ($resetExit -ne 0) { throw "Reset nije uspio (exit $resetExit). Mozes ga pokrenuti ponovo - brise samo demo podatke." }
   Step 'Gotovo. Otvori aplikaciju i osvjezi stranicu.'
 }
 finally {
   if ($ruleCreated) {
     Step "Zatvaram firewall pravilo $RuleName..."
-    $help = (& az postgres flexible-server firewall-rule delete --help 2>$null) -join "`n"
-    if ($help -match '--server-name') {
-      & az postgres flexible-server firewall-rule delete -g $RG -s $PgServer -n $RuleName --yes -o none --only-show-errors 2>$null
-    } else {
-      & az postgres flexible-server firewall-rule delete -g $RG -n $PgServer --rule-name $RuleName --yes -o none --only-show-errors 2>$null
+    if (-not (Invoke-FirewallRule 'delete' @('--yes'))) {
+      Write-Warning "Obrisi pravilo rucno u Azure portalu (Networking na $PgServer): $RuleName"
     }
-    if ($LASTEXITCODE -ne 0) { Write-Warning "Obrisi pravilo rucno u Azure portalu: $RuleName" }
   }
   foreach ($key in $appEnv.Keys) { Remove-Item "Env:$key" -ErrorAction SilentlyContinue }
 }
