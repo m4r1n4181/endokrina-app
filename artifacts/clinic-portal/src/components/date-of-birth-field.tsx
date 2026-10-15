@@ -190,7 +190,7 @@ export function DateOfBirthField({
 
       {/* The chosen month/year tells the user how many days that month actually has. */}
       {!isPatient && parts.month && parts.year && maxDay < 31 && (
-        <p className={cn(isPatient ? 'text-base' : 'text-sm', 'text-muted-foreground')}>
+        <p className="text-sm text-muted-foreground">
           {MONTH_NAMES[parts.month - 1]} {parts.year}. ima {maxDay} dana.
         </p>
       )}
